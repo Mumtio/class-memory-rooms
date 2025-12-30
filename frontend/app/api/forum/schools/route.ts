@@ -5,12 +5,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { forumClient, generateJoinKey } from '../../../lib/forum/client';
-import { mapThreadToSchool } from '../../../lib/forum/mappers';
+import { forumClient, generateJoinKey } from '@/lib/forum/client';
+import { mapThreadToSchool } from '@/lib/forum/mappers';
 import { getServerSession } from 'next-auth';
-import { authOptions, getAuthenticatedForumClient } from '../../../lib/auth';
-import { db } from '../../../lib/database';
-import { checkSchoolMembership } from '../../../lib/permission-middleware';
+import { authOptions, getAuthenticatedForumClient } from '@/lib/auth';
+import { db } from '@/lib/database';
+import { checkSchoolMembership } from '@/lib/permission-middleware';
 
 // GET /api/forum/schools - Get user's schools
 export async function GET(request: NextRequest) {

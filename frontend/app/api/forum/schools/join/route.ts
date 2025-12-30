@@ -4,10 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { forumClient } from '../../../../lib/forum/client';
+import { forumClient } from '@/lib/forum/client';
 import { getServerSession } from 'next-auth';
-import { authOptions, getAuthenticatedForumClient } from '../../../../lib/auth';
-import { db } from '../../../../lib/database';
+import { authOptions, getAuthenticatedForumClient } from '@/lib/auth';
+import { db } from '@/lib/database';
 
 // POST /api/forum/schools/join - Join existing school
 export async function POST(request: NextRequest) {
