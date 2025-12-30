@@ -1,22 +1,35 @@
 # Vercel Deployment Guide
 
-## Quick Fix for Current Deployment Failure
+## Current Status
 
-Your deployment is failing because Vercel doesn't have access to your environment variables.
+✅ **Build Fixed** - Local build is working successfully
+✅ **Import Paths Fixed** - Changed from relative imports to `@/` path alias
+✅ **Code Pushed** - Latest changes are on GitHub
 
-### Step 1: Add Environment Variables to Vercel
+## Quick Fix for 404 NOT_FOUND Error
+
+The 404 error you're seeing is likely because Vercel needs to be configured to look in the `frontend` directory for your Next.js app.
+
+### Step 1: Configure Root Directory in Vercel
 
 1. Go to your Vercel project dashboard: https://vercel.com/dashboard
 2. Select your project (class-memory-rooms)
-3. Go to **Settings** → **Environment Variables**
-4. Add the following variables:
+3. Go to **Settings** → **General**
+4. Scroll down to **Root Directory**
+5. Click **Edit**
+6. Enter: `frontend`
+7. Click **Save**
+
+### Step 2: Add Environment Variables
+
+Go to **Settings** → **Environment Variables** and add:
 
 ```
 FORUMMS_API_URL=https://foru.ms/api/v1
 FORUMMS_API_KEY=88e3494b-c191-429f-924a-b6440a9619cb
 
 NEXTAUTH_SECRET=class-memory-rooms-secret-key-for-nextauth-minimum-32-chars
-NEXTAUTH_URL=https://your-actual-vercel-url.vercel.app
+NEXTAUTH_URL=https://your-vercel-url.vercel.app
 
 GEMINI_API_KEY=AIzaSyAj-ZzDtARnMiOJL-1PC9_PbUM5Z0ioXQI
 GEMINI_MODEL=gemini-1.5-pro
@@ -30,47 +43,101 @@ AI_TEACHER_COOLDOWN_HOURS=1
 NODE_ENV=production
 ```
 
-**IMPORTANT:** Replace `https://your-actual-vercel-url.vercel.app` with your actual Vercel deployment URL.
+**IMPORTANT:** 
+- Replace `https://your-vercel-url.vercel.app` with your actual Vercel URL
+- You can find your Vercel URL in the **Domains** section of your project
+- Select **Production**, **Preview**, and **Development** for each variable
 
-5. Make sure to select **Production**, **Preview**, and **Development** for each variable
-6. Click **Save**
+### Step 3: Redeploy
 
-### Step 2: Redeploy
-
-After adding the environment variables:
+After configuring the root directory and environment variables:
 
 1. Go to **Deployments** tab
-2. Click the three dots (...) on the failed deployment
-3. Click **Redeploy**
+2. Click **Redeploy** on the latest deployment
+3. Wait for the build to complete
 
-OR simply push a new commit to trigger a new deployment.
+## Understanding the 404 Error
 
-### Step 3: Verify Build
+### What Happened:
 
-The build should now succeed. If it still fails, check the build logs for specific errors.
+1. **Root Cause**: Vercel was looking for your Next.js app in the repository root, but it's actually in the `frontend` subdirectory
+2. **Why It Failed**: Without the Root Directory setting, Vercel couldn't find `package.json` or the Next.js app
+3. **The Fix**: Setting Root Directory to `frontend` tells Vercel where to find your app
+
+### Why This Error Exists:
+
+The 404 error protects you from:
+- Accessing non-existent deployments
+- Routing to incorrect paths
+- Misconfigured projects
+
+### Mental Model:
+
+Think of Vercel deployments like this:
+```
+Repository Root (/)
+  ├── package.json (workspace root)
+  └── frontend/
+      ├── package.json (Next.js app) ← Vercel needs to start here
+      ├── app/
+      ├── lib/
+      └── ...
+```
+
+Without setting Root Directory, Vercel starts at `/` and can't find the Next.js app.
+
+## Warning Signs to Watch For:
+
+🚨 **Multiple package.json files** - Always set Root Directory when your app is in a subdirectory
+🚨 **"Module not found" errors** - Often caused by incorrect root directory or import paths
+🚨 **Build succeeds locally but fails on Vercel** - Usually environment or configuration differences
+
+## Alternative Approaches:
+
+### Option 1: Root Directory Setting (Recommended) ✅
+- **Pros**: Clean, simple, follows Vercel best practices
+- **Cons**: Requires manual configuration in dashboard
+- **Use when**: Your app is in a subdirectory
+
+### Option 2: Monorepo with vercel.json
+- **Pros**: Configuration in code
+- **Cons**: More complex, can cause routing issues
+- **Use when**: You have multiple apps to deploy
+
+### Option 3: Move Next.js to Root
+- **Pros**: No configuration needed
+- **Cons**: Restructures your repository
+- **Use when**: Starting a new project
+
+## Troubleshooting Checklist
+
+- [ ] Root Directory set to `frontend` in Vercel settings
+- [ ] All environment variables added
+- [ ] `NEXTAUTH_URL` matches your actual Vercel URL
+- [ ] Latest code pushed to GitHub
+- [ ] Deployment triggered after configuration changes
+- [ ] Build logs show no errors
+
+## After Successful Deployment
+
+1. ✅ Test authentication flow
+2. ✅ Verify Foru.ms API connectivity
+3. ✅ Test AI note generation
+4. ✅ Check all routes are accessible
+5. ✅ Update `NEXTAUTH_URL` if using a custom domain
 
 ## Security Note
 
-⚠️ **IMPORTANT:** Your API keys are currently exposed in `.env.local`. Make sure this file is in `.gitignore` and never commit it to your repository.
+⚠️ **IMPORTANT:** Your API keys are in `.env.local` which is properly excluded by `.gitignore`. Never commit this file to your repository.
 
-Check your `.gitignore` includes:
-```
-.env.local
-.env*.local
-```
+## Next Steps
 
-## Troubleshooting
+Once deployed successfully:
+1. Test the demo school functionality
+2. Create a test school and verify all features
+3. Monitor Vercel logs for any runtime errors
+4. Set up custom domain (optional)
 
-If the deployment still fails after adding environment variables:
+---
 
-1. **Check the build logs** - Look for specific error messages
-2. **Verify all environment variables are set** - Double-check spelling and values
-3. **Check NEXTAUTH_URL** - Must match your production URL exactly
-4. **Try a clean deployment** - Delete the project and redeploy from scratch
-
-## Next Steps After Successful Deployment
-
-1. Test authentication flow on production
-2. Verify Foru.ms API connectivity
-3. Test AI note generation with Gemini API
-4. Monitor error logs in Vercel dashboard
+**Need Help?** Check Vercel deployment logs for specific error messages.
