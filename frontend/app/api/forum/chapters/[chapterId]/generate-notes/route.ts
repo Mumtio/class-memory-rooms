@@ -9,6 +9,7 @@ import { mapPostsToContributions, createMetadata } from '@/lib/forum/mappers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/database';
+import { checkPermission } from '@/lib/permission-middleware';
 
 // POST /api/forum/chapters/[chapterId]/generate-notes - Generate AI notes
 export async function POST(
@@ -16,44 +17,48 @@ export async function POST(
   { params }: { params: { chapterId: string } }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userId = session.user.id;
     const { chapterId } = params;
     const body = await request.json();
     const { userRole } = body;
 
-    // 2. Verify chapter exists and user has access
+    // 1. Verify chapter exists and get school context
     const chapter = await forumClient.getThread(chapterId);
-    if (!chapter.tags.includes('chapter')) {
+    if (!chapter.extendedData?.type === 'chapter') {
       return NextResponse.json(
         { error: 'Chapter not found' },
         { status: 404 }
       );
     }
 
-    // 3. Get school membership and validate permissions
-    const schoolId = chapter.metadata?.schoolId;
-    if (schoolId) {
-      const membership = await db.getSchoolMembership(userId, schoolId);
-      if (!membership) {
-        return NextResponse.json(
-          { error: 'Access denied' },
-          { status: 403 }
-        );
-      }
+    // 2. Get school ID from chapter metadata
+    const schoolId = chapter.extendedData?.schoolId;
+    if (!schoolId) {
+      return NextResponse.json(
+        { error: 'School context not found for chapter' },
+        { status: 400 }
+      );
     }
 
-    // 4. Get all contributions
-    const posts = await forumClient.getPostsByThread(chapterId);
-    const contributionPosts = posts.filter(p => p.tags.includes('contribution'));
+    // 3. Check permissions using permission middleware
+    const permissionCheck = await checkPermission(schoolId, 'generate_ai_notes');
+    if (!permissionCheck.success) {
+      return NextResponse.json(
+        { error: permissionCheck.error!.message },
+        { status: permissionCheck.error!.status }
+      );
+    }
 
-    // 5. Check contribution threshold
-    const minContributions = await db.getAISettings(schoolId || 'demo', 'minContributions');
+    const userId = permissionCheck.userId!;
+    const userMembership = permissionCheck.membership!;
+
+    // 4. Get all contributions from Foru.ms posts
+    const posts = await forumClient.getPostsByThread(chapterId);
+    const contributionPosts = posts.filter(p => p.extendedData?.type === 'contribution');
+
+    // 5. Check contribution threshold using Foru.ms-based settings
+    const aiSettings = await db.getAISettings(schoolId);
+    const minContributions = aiSettings.minContributions;
+    
     if (contributionPosts.length < minContributions) {
       return NextResponse.json({
         error: `Need at least ${minContributions} contributions to generate notes`,
@@ -62,18 +67,21 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // 6. Check cooldown
+    // 6. Check cooldown period using Foru.ms AI generation tracking posts
     const lastGeneration = await db.getLastGeneration(chapterId);
     if (lastGeneration) {
-      const cooldown = getCooldownForRole(userRole);
+      const cooldownHours = getCooldownHoursForRole(userMembership.role, aiSettings);
+      const cooldownMs = cooldownHours * 60 * 60 * 1000;
       const timeSince = Date.now() - new Date(lastGeneration.generatedAt).getTime();
       
-      if (timeSince < cooldown) {
-        const remainingMinutes = Math.ceil((cooldown - timeSince) / 60000);
+      if (timeSince < cooldownMs) {
+        const remainingMinutes = Math.ceil((cooldownMs - timeSince) / 60000);
         return NextResponse.json({
           error: 'AI notes recently generated',
           remainingMinutes,
           lastGeneratedAt: lastGeneration.generatedAt,
+          userRole: userMembership.role,
+          cooldownHours
         }, { status: 403 });
       }
     }
@@ -100,41 +108,36 @@ export async function POST(
     // 10. Call AI service
     const aiResponse = await generateNotesWithAI(prompt);
 
-    // 11. Get next version number
-    const existingNotes = posts.filter(p => p.tags.includes('unified_notes'));
+    // 11. Get next version number from existing unified_notes posts
+    const existingNotes = posts.filter(p => p.extendedData?.type === 'unified_notes');
     const nextVersion = existingNotes.length + 1;
 
-    // 12. Create unified notes post
+    // 12. Create unified notes post with proper Foru.ms extendedData structure
     const notesPost = await forumClient.createPost({
       threadId: chapterId,
       content: aiResponse.content,
       tags: ['unified_notes'],
+      extendedData: {
+        type: 'unified_notes',
+        version: nextVersion,
+        generatedBy: userId,
+        generatorRole: userMembership.role,
+        generatedAt: new Date().toISOString(),
+        contributionCount: contributions.length,
+        schoolId: schoolId,
+        chapterId: chapterId
+      }
     });
 
-    // Update post with metadata (if Foru.ms supports it)
-    try {
-      await forumClient.updatePost(notesPost.id, JSON.stringify({
-        content: aiResponse.content,
-        metadata: createMetadata({
-          version: nextVersion,
-          generatedBy: userId,
-          generatorRole: userRole,
-          generatedAt: new Date().toISOString(),
-          contributionCount: contributions.length,
-        }),
-      }));
-    } catch (error) {
-      console.warn('Failed to update post metadata:', error);
-    }
-
-    // 13. Record generation in tracking table
-    await db.recordGeneration(chapterId, userId, userRole, contributions.length);
+    // 13. Record generation in Foru.ms AI generation tracking posts
+    await db.recordGeneration(chapterId, userId, userMembership.role, contributions.length);
 
     return NextResponse.json({
       postId: notesPost.id,
       version: nextVersion,
       content: aiResponse.content,
       contributionCount: contributions.length,
+      generatedBy: userMembership.role,
       message: 'AI notes generated successfully',
     });
   } catch (error) {
@@ -147,12 +150,12 @@ export async function POST(
 }
 
 // Helper functions
-function getCooldownForRole(role: string): number {
+function getCooldownHoursForRole(role: string, aiSettings: any): number {
   switch (role) {
-    case 'student': return 2 * 60 * 60 * 1000; // 2 hours
-    case 'teacher': return 30 * 60 * 1000;     // 30 minutes
-    case 'admin': return 0;                    // No cooldown
-    default: return 2 * 60 * 60 * 1000;       // Default to student
+    case 'student': return aiSettings.studentCooldown || 2;
+    case 'teacher': return aiSettings.teacherCooldown || 0.5; // 30 minutes
+    case 'admin': return 0; // No cooldown
+    default: return aiSettings.studentCooldown || 2; // Default to student
   }
 }
 
@@ -224,26 +227,4 @@ async function generateNotesWithAI(prompt: string): Promise<{ content: string }>
   return {
     content: result.choices[0].message.content,
   };
-}
-
-// Database helper functions (implement with your database)
-async function getSchoolMembership(userId: string, schoolId: string): Promise<any> {
-  return await db.getSchoolMembership(userId, schoolId);
-}
-
-async function getAISettings(schoolId: string, setting: string): Promise<number> {
-  return await db.getAISettings(schoolId, setting);
-}
-
-async function getLastGeneration(chapterId: string): Promise<any> {
-  return await db.getLastGeneration(chapterId);
-}
-
-async function recordGeneration(
-  chapterId: string,
-  userId: string,
-  role: string,
-  contributionCount: number
-): Promise<void> {
-  await db.recordGeneration(chapterId, userId, role, contributionCount);
 }

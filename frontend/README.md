@@ -32,6 +32,15 @@ This is the frontend application for Class Memory Rooms - a collaborative educat
 # Install dependencies
 npm install
 
+# Copy environment template
+cp .env.example .env
+
+# Configure your environment variables (see Configuration section below)
+# Edit .env with your actual API keys and settings
+
+# Validate configuration
+npm run validate-config
+
 # Start development server
 npm run dev
 
@@ -41,6 +50,57 @@ npm run build
 # Start production server
 npm run start
 ```
+
+## Configuration
+
+Class Memory Rooms requires several environment variables to function properly. Copy `.env.example` to `.env` and configure the following:
+
+### Required Environment Variables
+
+```bash
+# Foru.ms API Configuration
+FORUMMS_API_URL=https://foru.ms/api/v1
+FORUMMS_API_KEY=your_forumms_api_key_here
+
+# NextAuth Configuration
+NEXTAUTH_SECRET=your_nextauth_secret_here_minimum_32_characters
+NEXTAUTH_URL=http://localhost:3000
+
+# OpenAI API Configuration (for AI note generation)
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4-turbo-preview
+OPENAI_MAX_TOKENS=4000
+OPENAI_TEMPERATURE=0.7
+
+# AI Generation Settings
+AI_MIN_CONTRIBUTIONS=5
+AI_STUDENT_COOLDOWN_HOURS=2
+AI_TEACHER_COOLDOWN_HOURS=1
+
+# Development
+NODE_ENV=development
+```
+
+### Configuration Validation
+
+Use the built-in validation tool to check your configuration:
+
+```bash
+# Validate all configuration and test API connectivity
+npm run validate-config
+```
+
+This will:
+- ✅ Validate all required environment variables
+- 🌐 Test Foru.ms API connectivity
+- 🤖 Test OpenAI API connectivity
+- 📋 Report any configuration issues
+
+### Getting API Keys
+
+1. **Foru.ms API Key**: Contact the Foru.ms team or check their documentation
+2. **OpenAI API Key**: Get from [OpenAI Platform](https://platform.openai.com/api-keys)
+3. **NextAuth Secret**: Generate a random 32+ character string
 
 ## Project Structure
 

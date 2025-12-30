@@ -6,16 +6,20 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { DemoModeBadge } from "@/components/demo-mode-badge"
 import { useAuth } from "@/lib/auth-store"
-import { useActiveSchool } from "@/lib/active-school-context"
 import { can } from "@/lib/permissions"
 import { SchoolSwitcher } from "@/components/school-switcher"
 import { LogOut, User, Shield } from "lucide-react"
 import { isDemoSchool } from "@/lib/demo-school"
+import { useContext } from "react"
+import { ActiveSchoolContext } from "@/lib/active-school-context"
 
 export function Navbar() {
   const pathname = usePathname()
   const { user, isAuthenticated, signOut } = useAuth()
-  const { activeMembership } = useActiveSchool()
+  
+  // Use context directly and handle case where it's not available
+  const activeSchoolContext = useContext(ActiveSchoolContext)
+  const activeMembership = activeSchoolContext?.activeMembership || null
 
   const isActive = (path: string) => {
     if (path === "/school" || path === "/gateway") {
@@ -95,7 +99,7 @@ export function Navbar() {
             <DemoModeBadge />
             {isAuthenticated && user ? (
               <>
-                <SchoolSwitcher />
+                {activeSchoolContext && <SchoolSwitcher />}
                 <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-lg">
                   <User className="h-4 w-4 text-ink" />
                   <span className="text-sm font-semibold text-ink">{user.name}</span>

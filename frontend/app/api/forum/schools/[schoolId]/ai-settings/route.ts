@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/database';
+import { checkPermission, checkSchoolMembership } from '@/lib/permission-middleware';
 
 // GET /api/forum/schools/[schoolId]/ai-settings - Get AI settings
 export async function GET(
@@ -14,25 +15,18 @@ export async function GET(
   { params }: { params: { schoolId: string } }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userId = session.user.id;
     const { schoolId } = params;
 
-    // 2. Check if user is member of this school
-    const membership = await db.getSchoolMembership(userId, schoolId);
-    if (!membership) {
+    // Check if user is member of this school (any role can view settings)
+    const membershipCheck = await checkSchoolMembership(schoolId);
+    if (!membershipCheck.success) {
       return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
+        { error: membershipCheck.error!.message },
+        { status: membershipCheck.error!.status }
       );
     }
 
-    // 3. Get AI settings
+    // Get AI settings
     const settings = await db.getAISettings(schoolId);
 
     return NextResponse.json({ settings });
@@ -51,35 +45,20 @@ export async function PATCH(
   { params }: { params: { schoolId: string } }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userId = session.user.id;
     const { schoolId } = params;
     const body = await request.json();
     const { minContributions, studentCooldown } = body;
 
-    // 2. Check if user is admin in this school
-    const membership = await db.getSchoolMembership(userId, schoolId);
-    if (!membership || membership.role !== 'admin') {
+    // Check permissions - only admins can change AI settings
+    const permissionCheck = await checkPermission(schoolId, 'change_ai_settings');
+    if (!permissionCheck.success) {
       return NextResponse.json(
-        { error: 'Admin access required' },
-        { status: 403 }
+        { error: permissionCheck.error!.message },
+        { status: permissionCheck.error!.status }
       );
     }
 
-    // 3. Block Demo School admin actions
-    if (db.isDemoSchool(schoolId)) {
-      return NextResponse.json(
-        { error: 'Settings changes not allowed in Demo School' },
-        { status: 403 }
-      );
-    }
-
-    // 4. Validate input
+    // Validate input
     const updates: any = {};
 
     if (minContributions !== undefined) {
@@ -109,10 +88,10 @@ export async function PATCH(
       );
     }
 
-    // 5. Update AI settings
+    // Update AI settings
     await db.updateAISettings(schoolId, updates);
 
-    // 6. Return updated settings
+    // Return updated settings
     const updatedSettings = await db.getAISettings(schoolId);
 
     return NextResponse.json({

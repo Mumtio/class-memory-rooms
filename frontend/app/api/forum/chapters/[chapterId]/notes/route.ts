@@ -25,7 +25,7 @@ export async function GET(
 
     // 2. Verify chapter exists and user has access
     const chapter = await forumClient.getThread(chapterId);
-    if (!chapter.tags.includes('chapter')) {
+    if (!chapter.extendedData?.type === 'chapter') {
       return NextResponse.json(
         { error: 'Chapter not found' },
         { status: 404 }
@@ -35,12 +35,12 @@ export async function GET(
     // 3. Get all posts in chapter thread
     const posts = await forumClient.getPostsByThread(chapterId);
     
-    // 4. Filter for unified_notes posts and get latest
+    // 4. Filter for unified_notes posts and get latest by version
     const notesPosts = posts
-      .filter(p => p.tags.includes('unified_notes'))
+      .filter(p => p.extendedData?.type === 'unified_notes')
       .sort((a, b) => {
-        const versionA = a.metadata?.version || 0;
-        const versionB = b.metadata?.version || 0;
+        const versionA = a.extendedData?.version || 0;
+        const versionB = b.extendedData?.version || 0;
         return versionB - versionA; // Latest first
       });
 

@@ -14,7 +14,7 @@ import { findSchoolByKey } from "@/lib/workspace-store"
 
 export default function JoinSchoolPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const [joinKey, setJoinKey] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,16 +45,14 @@ export default function JoinSchoolPage() {
     }
 
     const schoolId = school?.id || "demo"
-    const authState = JSON.parse(localStorage.getItem("class-memory-rooms-auth") || "{}")
-    const currentUser = authState.user
 
-    if (!currentUser) {
+    if (!user) {
       setError("User not authenticated.")
       setIsSubmitting(false)
       return
     }
 
-    const result = joinSchool(joinKey, currentUser.name, currentUser.email)
+    const result = joinSchool(joinKey, user.name, user.email)
 
     if (result.success && result.user) {
       window.dispatchEvent(new Event("storage"))

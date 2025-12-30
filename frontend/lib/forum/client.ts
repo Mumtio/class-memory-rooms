@@ -13,6 +13,7 @@ export interface ForumThread {
   updatedAt: string;
   tags: string[];
   metadata?: Record<string, any>;
+  extendedData?: Record<string, any>;
   participantCount: number;
 }
 
@@ -27,7 +28,10 @@ export interface ForumPost {
   parentPostId?: string;
   helpfulCount: number;
   replyCount: number;
+  extendedData?: Record<string, any>;
 }
+
+import { withRetry, DEFAULT_RETRY_CONFIG } from '../error-handling';
 
 export interface ForumUser {
   id: string;
@@ -36,11 +40,28 @@ export interface ForumUser {
   avatarUrl?: string;
 }
 
+export interface RegisterRequest {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: ForumUser;
+}
+
 export interface CreateThreadRequest {
   title: string;
   content: string;
   tags: string[];
   metadata?: Record<string, any>;
+  extendedData?: Record<string, any>;
 }
 
 export interface CreatePostRequest {
@@ -48,15 +69,27 @@ export interface CreatePostRequest {
   content: string;
   tags: string[];
   parentPostId?: string;
+  extendedData?: Record<string, any>;
 }
 
 class ForumClient {
   private baseUrl: string;
   private apiKey: string;
+  private authToken: string | null = null;
 
   constructor() {
     this.baseUrl = process.env.FORUMMS_API_URL || 'https://foru.ms/api/v1';
     this.apiKey = process.env.FORUMMS_API_KEY || '';
+  }
+
+  // Set authentication token for subsequent requests
+  setAuthToken(token: string | null): void {
+    this.authToken = token;
+  }
+
+  // Get current authentication token
+  getAuthToken(): string | null {
+    return this.authToken;
   }
 
   private async request<T>(
@@ -65,32 +98,107 @@ class ForumClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-API-Key': this.apiKey,
+    };
+
+    // Add authentication header if token is available
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+
     const config: RequestInit = {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey,
+        ...headers,
         ...options.headers,
       },
+      // Add timeout to prevent hanging requests
+      signal: AbortSignal.timeout(30000), // 30 second timeout
     };
 
     try {
       const response = await fetch(url, config);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
+        let errorData: any = {};
+        try {
+          errorData = await response.json();
+        } catch {
+          // If response body is not JSON, use empty object
+        }
+        
+        const error = new Error(
           `Foru.ms API Error: ${response.status} ${response.statusText} - ${
-            errorData.message || 'Unknown error'
+            errorData.message || errorData.error || 'Unknown error'
           }`
         );
+        
+        // Add status code to error for better handling
+        (error as any).status = response.status;
+        (error as any).statusText = response.statusText;
+        (error as any).errorData = errorData;
+        
+        throw error;
       }
 
       return await response.json();
     } catch (error) {
+      // Handle timeout errors
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        const timeoutError = new Error('Request timed out after 30 seconds');
+        (timeoutError as any).code = 'TIMEOUT';
+        throw timeoutError;
+      }
+      
+      // Handle network errors
+      if (error instanceof Error && (error.message.includes('fetch failed') || error.message.includes('network'))) {
+        const networkError = new Error('Network connection failed');
+        (networkError as any).code = 'NETWORK_ERROR';
+        throw networkError;
+      }
+      
       console.error('Foru.ms API request failed:', error);
       throw error;
     }
+  }
+
+  // Authentication operations
+  async register(userData: RegisterRequest): Promise<ForumUser> {
+    return withRetry(async () => {
+      const response = await this.request<AuthResponse>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(userData),
+      });
+      
+      // Set the token for subsequent requests
+      this.setAuthToken(response.token);
+      
+      return response.user;
+    }, { maxRetries: 2 }); // Fewer retries for auth operations
+  }
+
+  async login(credentials: LoginRequest): Promise<{ token: string; user: ForumUser }> {
+    return withRetry(async () => {
+      const response = await this.request<AuthResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(credentials),
+      });
+      
+      // Set the token for subsequent requests
+      this.setAuthToken(response.token);
+      
+      return {
+        token: response.token,
+        user: response.user,
+      };
+    }, { maxRetries: 2 }); // Fewer retries for auth operations
+  }
+
+  async logout(): Promise<void> {
+    // Clear the authentication token
+    this.setAuthToken(null);
   }
 
   // Thread operations
@@ -102,7 +210,7 @@ class ForumClient {
   }
 
   async getThread(threadId: string): Promise<ForumThread> {
-    return this.request<ForumThread>(`/threads/${threadId}`);
+    return withRetry(() => this.request<ForumThread>(`/threads/${threadId}`));
   }
 
   async updateThread(
@@ -116,7 +224,11 @@ class ForumClient {
   }
 
   async getThreadsByTag(tag: string): Promise<ForumThread[]> {
-    return this.request<ForumThread[]>(`/threads?tag=${encodeURIComponent(tag)}`);
+    return withRetry(() => this.request<ForumThread[]>(`/threads?tag=${encodeURIComponent(tag)}`));
+  }
+
+  async getThreadsByType(type: string): Promise<ForumThread[]> {
+    return withRetry(() => this.request<ForumThread[]>(`/threads?extendedData.type=${encodeURIComponent(type)}`));
   }
 
   // Post operations
@@ -128,15 +240,19 @@ class ForumClient {
   }
 
   async getPost(postId: string): Promise<ForumPost> {
-    return this.request<ForumPost>(`/posts/${postId}`);
+    return withRetry(() => this.request<ForumPost>(`/posts/${postId}`));
   }
 
   async getPostsByThread(threadId: string): Promise<ForumPost[]> {
-    return this.request<ForumPost[]>(`/threads/${threadId}/posts`);
+    return withRetry(() => this.request<ForumPost[]>(`/threads/${threadId}/posts`));
   }
 
   async getPostsByTag(tag: string): Promise<ForumPost[]> {
-    return this.request<ForumPost[]>(`/posts?tag=${encodeURIComponent(tag)}`);
+    return withRetry(() => this.request<ForumPost[]>(`/posts?tag=${encodeURIComponent(tag)}`));
+  }
+
+  async getPostsByType(type: string): Promise<ForumPost[]> {
+    return withRetry(() => this.request<ForumPost[]>(`/posts?extendedData.type=${encodeURIComponent(type)}`));
   }
 
   async updatePost(postId: string, content: string): Promise<ForumPost> {
@@ -154,7 +270,7 @@ class ForumClient {
 
   // User operations
   async getUser(userId: string): Promise<ForumUser> {
-    return this.request<ForumUser>(`/users/${userId}`);
+    return withRetry(() => this.request<ForumUser>(`/users/${userId}`));
   }
 
   // Thread membership operations
@@ -172,7 +288,7 @@ class ForumClient {
   }
 
   async getThreadParticipants(threadId: string): Promise<ForumUser[]> {
-    return this.request<ForumUser[]>(`/threads/${threadId}/participants`);
+    return withRetry(() => this.request<ForumUser[]>(`/threads/${threadId}/participants`));
   }
 
   // Search operations
@@ -180,17 +296,19 @@ class ForumClient {
     threads: ForumThread[];
     posts: ForumPost[];
   }> {
-    const params = new URLSearchParams({ q: query });
-    
-    if (filters?.tags) {
-      filters.tags.forEach(tag => params.append('tag', tag));
-    }
-    
-    if (filters?.threadId) {
-      params.append('threadId', filters.threadId);
-    }
+    return withRetry(() => {
+      const params = new URLSearchParams({ q: query });
+      
+      if (filters?.tags) {
+        filters.tags.forEach(tag => params.append('tag', tag));
+      }
+      
+      if (filters?.threadId) {
+        params.append('threadId', filters.threadId);
+      }
 
-    return this.request(`/search?${params.toString()}`);
+      return this.request(`/search?${params.toString()}`);
+    });
   }
 
   // Helpful/reaction operations
@@ -208,6 +326,9 @@ class ForumClient {
     });
   }
 }
+
+// Export the class for testing and direct instantiation
+export { ForumClient };
 
 // Singleton instance
 export const forumClient = new ForumClient();

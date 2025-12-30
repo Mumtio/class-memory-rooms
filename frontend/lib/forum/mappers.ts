@@ -27,14 +27,14 @@ function getTagValue(tags: string[], prefix: string): string | undefined {
 
 // Map Foru.ms thread to School
 export function mapThreadToSchool(thread: ForumThread, userRole?: UserRole): School {
-  const metadata = parseMetadata(thread.metadata);
+  const extendedData = thread.extendedData || {};
   
   return {
     id: thread.id,
     name: thread.title,
     description: thread.content || undefined,
-    slug: metadata.slug || thread.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    joinKey: metadata.joinKey,
+    slug: extendedData.slug || thread.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    joinKey: extendedData.joinKey,
     memberCount: thread.participantCount,
     userRole: userRole || 'student',
     createdAt: thread.createdAt,
@@ -44,12 +44,17 @@ export function mapThreadToSchool(thread: ForumThread, userRole?: UserRole): Sch
 
 // Map Foru.ms post to Subject
 export function mapPostToSubject(post: ForumPost): Subject {
-  let subjectData;
-  try {
-    subjectData = JSON.parse(post.content);
-  } catch {
-    // Fallback if content is not JSON
-    subjectData = { name: post.content, color: '#3B82F6' };
+  const extendedData = post.extendedData || {};
+  
+  // Use extendedData for structured data, fallback to parsing content
+  let subjectData = extendedData;
+  if (!subjectData.name && post.content) {
+    try {
+      subjectData = JSON.parse(post.content);
+    } catch {
+      // Fallback if content is not JSON
+      subjectData = { name: post.content, color: '#3B82F6' };
+    }
   }
 
   return {
@@ -66,12 +71,17 @@ export function mapPostToSubject(post: ForumPost): Subject {
 
 // Map Foru.ms post to Course
 export function mapPostToCourse(post: ForumPost): Course {
-  let courseData;
-  try {
-    courseData = JSON.parse(post.content);
-  } catch {
-    // Fallback if content is not JSON
-    courseData = { name: post.content, code: 'COURSE' };
+  const extendedData = post.extendedData || {};
+  
+  // Use extendedData for structured data, fallback to parsing content
+  let courseData = extendedData;
+  if (!courseData.name && post.content) {
+    try {
+      courseData = JSON.parse(post.content);
+    } catch {
+      // Fallback if content is not JSON
+      courseData = { name: post.content, code: 'COURSE' };
+    }
   }
 
   return {
@@ -90,15 +100,15 @@ export function mapPostToCourse(post: ForumPost): Course {
 
 // Map Foru.ms thread to Chapter
 export function mapThreadToChapter(thread: ForumThread): Chapter {
-  const metadata = parseMetadata(thread.metadata);
+  const extendedData = thread.extendedData || {};
   
   return {
     id: thread.id,
     name: thread.title,
     description: thread.content || undefined,
-    courseId: metadata.courseId || '',
-    label: metadata.label || 'Chapter',
-    status: metadata.status || 'Collecting',
+    courseId: extendedData.courseId || '',
+    label: extendedData.label || 'Chapter',
+    status: extendedData.status || 'Collecting',
     contributionCount: 0, // Will be populated by counting posts
     hasAiNotes: false, // Will be set by checking for unified_notes posts
     latestAiNoteVersion: undefined,
@@ -109,20 +119,23 @@ export function mapThreadToChapter(thread: ForumThread): Chapter {
 
 // Map Foru.ms post to Contribution
 export function mapPostToContribution(post: ForumPost, author?: ForumUser): Contribution {
-  const contributionType = getTagValue(post.tags, 'type:') as any || 'takeaway';
+  const extendedData = post.extendedData || {};
+  const contributionType = extendedData.contributionType || getTagValue(post.tags, 'type:') as any || 'takeaway';
   
-  // Try to parse structured content
-  let parsedContent;
-  try {
-    parsedContent = JSON.parse(post.content);
-  } catch {
-    // Content is plain text
-    parsedContent = { content: post.content };
+  // Use extendedData for structured data, fallback to parsing content
+  let parsedContent = extendedData;
+  if (!parsedContent.content && post.content) {
+    try {
+      parsedContent = JSON.parse(post.content);
+    } catch {
+      // Content is plain text
+      parsedContent = { content: post.content };
+    }
   }
 
   return {
     id: post.id,
-    title: parsedContent.title || 'Untitled',
+    title: parsedContent.title || extendedData.title || 'Untitled',
     content: parsedContent.content || post.content,
     type: contributionType,
     link: parsedContent.link,
@@ -138,7 +151,7 @@ export function mapPostToContribution(post: ForumPost, author?: ForumUser): Cont
       id: post.userId,
       name: 'Unknown User',
     },
-    anonymous: parsedContent.anonymous || false,
+    anonymous: parsedContent.anonymous || extendedData.anonymous || false,
     helpfulCount: post.helpfulCount || 0,
     replyCount: post.replyCount || 0,
     createdAt: post.createdAt,
@@ -148,19 +161,19 @@ export function mapPostToContribution(post: ForumPost, author?: ForumUser): Cont
 
 // Map Foru.ms post to AI Note
 export function mapPostToAiNote(post: ForumPost): AiNote {
-  const metadata = parseMetadata(post.metadata);
+  const extendedData = post.extendedData || {};
   
   return {
     id: post.id,
-    version: metadata.version || 1,
+    version: extendedData.version || 1,
     content: post.content,
-    contributionCount: metadata.contributionCount || 0,
+    contributionCount: extendedData.contributionCount || 0,
     chapterId: post.threadId,
     generatedBy: {
-      id: metadata.generatedBy || post.userId,
-      name: metadata.generatedByName || 'AI Assistant',
+      id: extendedData.generatedBy || post.userId,
+      name: extendedData.generatedByName || 'AI Assistant',
     },
-    createdAt: post.createdAt,
+    createdAt: extendedData.generatedAt || post.createdAt,
   };
 }
 
@@ -170,7 +183,7 @@ export function mapThreadsToSchools(
   memberships: Record<string, { role: UserRole; joinedAt: string }>
 ): School[] {
   return threads
-    .filter(thread => thread.tags.includes('school'))
+    .filter(thread => thread.extendedData?.type === 'school')
     .map(thread => {
       const membership = memberships[thread.id];
       return mapThreadToSchool(thread, membership?.role);
@@ -180,21 +193,21 @@ export function mapThreadsToSchools(
 // Map array of posts to subjects
 export function mapPostsToSubjects(posts: ForumPost[]): Subject[] {
   return posts
-    .filter(post => post.tags.includes('subject'))
+    .filter(post => post.extendedData?.type === 'subject')
     .map(mapPostToSubject);
 }
 
 // Map array of posts to courses
 export function mapPostsToCourses(posts: ForumPost[]): Course[] {
   return posts
-    .filter(post => post.tags.includes('course'))
+    .filter(post => post.extendedData?.type === 'course')
     .map(mapPostToCourse);
 }
 
 // Map array of threads to chapters
 export function mapThreadsToChapters(threads: ForumThread[]): Chapter[] {
   return threads
-    .filter(thread => thread.tags.includes('chapter'))
+    .filter(thread => thread.extendedData?.type === 'chapter')
     .map(mapThreadToChapter);
 }
 
@@ -204,14 +217,14 @@ export function mapPostsToContributions(
   authors: Record<string, ForumUser>
 ): Contribution[] {
   return posts
-    .filter(post => post.tags.includes('contribution'))
+    .filter(post => post.extendedData?.type === 'contribution')
     .map(post => mapPostToContribution(post, authors[post.userId]));
 }
 
 // Map array of posts to AI notes
 export function mapPostsToAiNotes(posts: ForumPost[]): AiNote[] {
   return posts
-    .filter(post => post.tags.includes('unified_notes'))
+    .filter(post => post.extendedData?.type === 'unified_notes')
     .map(mapPostToAiNote)
     .sort((a, b) => b.version - a.version); // Latest first
 }
@@ -234,25 +247,25 @@ export function createMetadata(data: Record<string, any>): Record<string, any> {
 
 // Validation helpers
 export function isValidSchoolThread(thread: ForumThread): boolean {
-  return thread.tags.includes('school') && !!thread.metadata;
+  return thread.extendedData?.type === 'school' && !!thread.extendedData.joinKey;
 }
 
 export function isValidChapterThread(thread: ForumThread): boolean {
-  return thread.tags.includes('chapter');
+  return thread.extendedData?.type === 'chapter';
 }
 
 export function isValidContributionPost(post: ForumPost): boolean {
-  return post.tags.includes('contribution');
+  return post.extendedData?.type === 'contribution';
 }
 
 export function isValidSubjectPost(post: ForumPost): boolean {
-  return post.tags.includes('subject');
+  return post.extendedData?.type === 'subject';
 }
 
 export function isValidCoursePost(post: ForumPost): boolean {
-  return post.tags.includes('course');
+  return post.extendedData?.type === 'course';
 }
 
 export function isValidAiNotePost(post: ForumPost): boolean {
-  return post.tags.includes('unified_notes');
+  return post.extendedData?.type === 'unified_notes';
 }

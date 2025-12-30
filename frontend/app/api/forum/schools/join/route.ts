@@ -4,10 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { forumClient } from '@/lib/forum/client';
+import { forumClient } from '../../../../lib/forum/client';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { db } from '@/lib/database';
+import { authOptions, getAuthenticatedForumClient } from '../../../../lib/auth';
+import { db } from '../../../../lib/database';
 
 // POST /api/forum/schools/join - Join existing school
 export async function POST(request: NextRequest) {
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Find school by join key
+    // 3. Find school by join key using Foru.ms API
     const school = await findSchoolByJoinKey(joinKey);
     if (!school) {
       return NextResponse.json(
@@ -49,13 +49,14 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Determine role (Demo School = student, others = student by default)
-    const role = school.id === 'demo' ? 'student' : 'student';
+    const role = school.isDemo ? 'student' : 'student';
 
-    // 6. Add user to school_memberships table
+    // 6. Add user to school_memberships using Foru.ms-based storage
     await db.addSchoolMembership(userId, school.id, role);
 
     // 7. Add user as thread participant in Foru.ms
-    await forumClient.addThreadParticipant(school.id, userId);
+    const authenticatedClient = await getAuthenticatedForumClient();
+    await authenticatedClient.addThreadParticipant(school.id, userId);
 
     return NextResponse.json({
       schoolId: school.id,
@@ -72,21 +73,25 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Helper functions (implement with your database)
-async function findSchoolByJoinKey(joinKey: string): Promise<{ id: string; name: string } | null> {
+// Helper functions
+async function findSchoolByJoinKey(joinKey: string): Promise<{ id: string; name: string; isDemo: boolean } | null> {
   try {
     // Special case for demo school
     if (joinKey === 'DEMO24') {
-      return { id: 'demo', name: 'Demo High School' };
+      return { id: 'demo', name: 'Demo High School', isDemo: true };
     }
 
-    // Search through school threads for matching joinKey in metadata
-    const schoolThreads = await forumClient.getThreadsByTag('school');
+    // Search through school threads for matching joinKey in extendedData
+    const schoolThreads = await forumClient.getThreadsByType('school');
     
     for (const thread of schoolThreads) {
-      const metadata = thread.metadata || {};
-      if (metadata.joinKey === joinKey) {
-        return { id: thread.id, name: thread.title };
+      const extendedData = thread.extendedData || {};
+      if (extendedData.joinKey === joinKey && extendedData.type === 'school') {
+        return { 
+          id: thread.id, 
+          name: thread.title,
+          isDemo: extendedData.isDemo || false
+        };
       }
     }
 
@@ -95,12 +100,4 @@ async function findSchoolByJoinKey(joinKey: string): Promise<{ id: string; name:
     console.error('Error finding school by join key:', error);
     return null;
   }
-}
-
-async function getSchoolMembership(userId: string, schoolId: string): Promise<any> {
-  return await db.getSchoolMembership(userId, schoolId);
-}
-
-async function addSchoolMembership(userId: string, schoolId: string, role: 'student' | 'teacher' | 'admin'): Promise<void> {
-  await db.addSchoolMembership(userId, schoolId, role);
 }

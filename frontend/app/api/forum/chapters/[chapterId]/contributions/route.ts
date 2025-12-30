@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { forumClient } from '@/lib/forum/client';
 import { mapPostsToContributions, createStructuredContent } from '@/lib/forum/mappers';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { authOptions, getAuthenticatedForumClient } from '@/lib/auth';
 
 // GET /api/forum/chapters/[chapterId]/contributions - Get all contributions
 export async function GET(
@@ -118,7 +118,10 @@ export async function POST(
       );
     }
 
-    // 4. Create structured content
+    // 4. Get authenticated client
+    const authenticatedClient = await getAuthenticatedForumClient();
+
+    // 5. Create structured content
     const structuredContent = createStructuredContent({
       title,
       content,
@@ -127,11 +130,20 @@ export async function POST(
       anonymous,
     });
 
-    // 5. Create post in Foru.ms
-    const post = await forumClient.createPost({
+    // 6. Create structured content with proper extendedData
+    const post = await authenticatedClient.createPost({
       threadId: chapterId,
       content: structuredContent,
       tags: ['contribution', `type:${type}`],
+      extendedData: {
+        type: 'contribution',
+        contributionType: type,
+        title: title?.trim(),
+        anonymous: anonymous,
+        imageUrl: imageUrl,
+        links: links,
+        createdBy: userId
+      }
     });
 
     return NextResponse.json({

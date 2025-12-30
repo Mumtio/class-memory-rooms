@@ -31,9 +31,12 @@ export function ActiveSchoolProvider({
   user: User | null
 }) {
   const [activeSchoolId, setActiveSchoolId] = useState<string | null>(null)
+  const [isHydrated, setIsHydrated] = useState(false)
 
   // Initialize active school from localStorage or user's current school
   useEffect(() => {
+    setIsHydrated(true)
+    
     if (!user) {
       setActiveSchoolId(null)
       return
@@ -64,7 +67,7 @@ export function ActiveSchoolProvider({
   }
 
   const activeMembership: Membership | null = React.useMemo(() => {
-    if (!user || !activeSchoolId) {
+    if (!user || !activeSchoolId || !isHydrated) {
       return null
     }
 
@@ -74,7 +77,7 @@ export function ActiveSchoolProvider({
         schoolId: activeSchoolId,
         schoolName: DEMO_SCHOOL_NAME,
         role: getDemoSchoolRole(), // Always "student" in demo
-        joinedAt: new Date().toISOString(),
+        joinedAt: "2024-01-01T00:00:00.000Z", // Fixed date for demo to prevent hydration mismatch
       }
     }
 
@@ -91,11 +94,13 @@ export function ActiveSchoolProvider({
       role: data.role,
       joinedAt: data.joinedAt,
     }
-  }, [user, activeSchoolId])
+  }, [user, activeSchoolId, isHydrated])
 
   const setActiveSchool = (schoolId: string) => {
     setActiveSchoolId(schoolId)
-    localStorage.setItem(ACTIVE_SCHOOL_KEY, schoolId)
+    if (typeof window !== "undefined") {
+      localStorage.setItem(ACTIVE_SCHOOL_KEY, schoolId)
+    }
   }
 
   return (

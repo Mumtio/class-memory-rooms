@@ -5,10 +5,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { forumClient, generateJoinKey } from '@/lib/forum/client';
-import { mapThreadToSchool } from '@/lib/forum/mappers';
+import { forumClient, generateJoinKey } from '../../../lib/forum/client';
+import { mapThreadToSchool } from '../../../lib/forum/mappers';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth'; // You'll need to create this
+import { authOptions, getAuthenticatedForumClient } from '../../../lib/auth';
+import { db } from '../../../lib/database';
+import { checkSchoolMembership } from '../../../lib/permission-middleware';
 
 // GET /api/forum/schools - Get user's schools
 export async function GET(request: NextRequest) {
@@ -20,18 +22,20 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = session.user.id;
+    const authenticatedClient = await getAuthenticatedForumClient();
 
-    // 2. Get user's school memberships from external table
+    // 2. Get user's school memberships from Foru.ms-based database
     const memberships = await db.getUserSchoolMemberships(userId);
 
-    // 3. Fetch school threads from Foru.ms
+    // 3. Fetch school threads from Foru.ms using authenticated client
     const schoolIds = Object.keys(memberships);
     const schools = [];
 
     for (const schoolId of schoolIds) {
       try {
-        const thread = await forumClient.getThread(schoolId);
-        if (thread.tags.includes('school')) {
+        const thread = await authenticatedClient.getThread(schoolId);
+        // Check for proper school thread with extendedData.type = "school"
+        if (thread.extendedData?.type === 'school') {
           const school = mapThreadToSchool(thread, memberships[schoolId].role);
           schools.push(school);
         }
@@ -75,26 +79,47 @@ export async function POST(request: NextRequest) {
     // 3. Generate unique join key
     let joinKey = generateJoinKey();
     
-    // Ensure uniqueness (in production, check against database)
-    // For now, assume it's unique
+    // Ensure uniqueness by checking existing schools
+    let attempts = 0;
+    while (attempts < 10) {
+      try {
+        // Search for existing schools with this join key
+        const existingSchools = await forumClient.getThreadsByType('school');
+        const keyExists = existingSchools.some(thread => 
+          thread.extendedData?.joinKey === joinKey
+        );
+        
+        if (!keyExists) break;
+        
+        joinKey = generateJoinKey();
+        attempts++;
+      } catch (error) {
+        console.error('Error checking join key uniqueness:', error);
+        break;
+      }
+    }
     
-    // 4. Create school thread in Foru.ms
-    const thread = await forumClient.createThread({
+    // 4. Create school thread in Foru.ms with proper extendedData structure
+    const authenticatedClient = await getAuthenticatedForumClient();
+    const thread = await authenticatedClient.createThread({
       title: name,
       content: description || '',
       tags: ['school'],
-      metadata: {
+      extendedData: {
+        type: 'school',
         joinKey,
         isDemo: false,
         createdBy: userId,
+        name: name,
+        description: description || ''
       },
     });
 
-    // 5. Add creator as admin in school_memberships table
+    // 5. Add creator as admin in school_memberships using Foru.ms-based storage
     await db.addSchoolMembership(userId, thread.id, 'admin');
 
     // 6. Add user as thread participant
-    await forumClient.addThreadParticipant(thread.id, userId);
+    await authenticatedClient.addThreadParticipant(thread.id, userId);
 
     return NextResponse.json({
       schoolId: thread.id,
@@ -109,6 +134,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-// Import database functions
-import { db } from '@/lib/database';

@@ -1,13 +1,15 @@
 /**
  * Demo School Join API Route Handler
- * Handles joining the special Demo School
+ * Handles joining the special Demo School with auto-enrollment
+ * Requirements: 9.1, 9.3
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { forumClient } from '@/lib/forum/client';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/database';
+import { autoEnrollInDemoSchool, isDemoSchoolSetup, initializeDemoSchool } from '@/lib/demo-school-setup';
+import { DEMO_SCHOOL_ID, DEMO_SCHOOL_NAME } from '@/lib/demo-school';
 
 // POST /api/forum/schools/demo/join - Join Demo School
 export async function POST(request: NextRequest) {
@@ -19,34 +21,32 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = session.user.id;
-    const demoSchoolId = 'demo';
 
     // 2. Check if user is already a member of Demo School
-    const existingMembership = await db.getSchoolMembership(userId, demoSchoolId);
+    const existingMembership = await db.getSchoolMembership(userId, DEMO_SCHOOL_ID);
     if (existingMembership) {
       return NextResponse.json({
-        schoolId: demoSchoolId,
+        schoolId: DEMO_SCHOOL_ID,
         role: 'student',
-        schoolName: 'Demo High School',
+        schoolName: DEMO_SCHOOL_NAME,
         message: 'Already a member of Demo School',
       });
     }
 
-    // 3. Add user to Demo School (always as student)
-    await db.addSchoolMembership(userId, demoSchoolId, 'student');
-
-    // 4. Add user as thread participant in Foru.ms (if demo thread exists)
-    try {
-      await forumClient.addThreadParticipant(demoSchoolId, userId);
-    } catch (error) {
-      // Demo thread might not exist in Foru.ms yet, that's okay
-      console.warn('Could not add user to demo thread:', error);
+    // 3. Ensure demo school is set up
+    const isSetup = await isDemoSchoolSetup();
+    if (!isSetup) {
+      console.log('Demo school not set up, initializing...');
+      await initializeDemoSchool();
     }
 
+    // 4. Auto-enroll user in demo school
+    await autoEnrollInDemoSchool(userId);
+
     return NextResponse.json({
-      schoolId: demoSchoolId,
+      schoolId: DEMO_SCHOOL_ID,
       role: 'student',
-      schoolName: 'Demo High School',
+      schoolName: DEMO_SCHOOL_NAME,
       message: 'Successfully joined Demo School',
     });
   } catch (error) {

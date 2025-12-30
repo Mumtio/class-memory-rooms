@@ -126,9 +126,14 @@ export function getCurrentSchoolRole(user: User | null, schoolId?: string): User
 }
 
 export function useAuth() {
-  const [authState, setAuthState] = useState<AuthState>(() => getAuthState())
+  const [authState, setAuthState] = useState<AuthState>({ user: null, isAuthenticated: false })
+  const [isHydrated, setIsHydrated] = useState(false)
 
   useEffect(() => {
+    // Hydrate from localStorage after component mounts
+    setAuthState(getAuthState())
+    setIsHydrated(true)
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
         setAuthState(getAuthState())
@@ -147,6 +152,7 @@ export function useAuth() {
   return {
     user: authState.user,
     isAuthenticated: authState.isAuthenticated,
+    isHydrated,
     signOut,
   }
 }

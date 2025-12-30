@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/database';
+import { checkPermission } from '@/lib/permission-middleware';
 
 // GET /api/forum/schools/[schoolId]/members - Get school members
 export async function GET(
@@ -14,33 +15,18 @@ export async function GET(
   { params }: { params: { schoolId: string } }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userId = session.user.id;
     const { schoolId } = params;
 
-    // 2. Check if user is admin in this school
-    const membership = await db.getSchoolMembership(userId, schoolId);
-    if (!membership || membership.role !== 'admin') {
+    // Check permissions - only admins can view member list
+    const permissionCheck = await checkPermission(schoolId, 'manage_members');
+    if (!permissionCheck.success) {
       return NextResponse.json(
-        { error: 'Admin access required' },
-        { status: 403 }
+        { error: permissionCheck.error!.message },
+        { status: permissionCheck.error!.status }
       );
     }
 
-    // 3. Block Demo School admin actions
-    if (db.isDemoSchool(schoolId)) {
-      return NextResponse.json(
-        { error: 'Admin actions not allowed in Demo School' },
-        { status: 403 }
-      );
-    }
-
-    // 4. Get all members of the school
+    // Get all members of the school
     const members = await db.getSchoolMembers(schoolId);
 
     return NextResponse.json({ members });
