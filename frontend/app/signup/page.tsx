@@ -3,13 +3,12 @@
 import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth-store"
+import { useAuth, register } from "@/lib/auth-store"
 import { useEffect } from "react"
-import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { UserPlus } from "lucide-react"
+import { UserPlus, AlertCircle } from "lucide-react"
 import Link from "next/link"
 
 export default function SignupPage() {
@@ -21,35 +20,29 @@ export default function SignupPage() {
     password: "",
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      router.replace("/gateway")
-    }
-  }, [isAuthenticated, router])
+  // Don't redirect if already authenticated - let them access gateway
+  // useEffect removed to allow authenticated users to visit gateway
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setError(null)
 
     try {
-      const newUser = {
-        id: `user-${Date.now()}`,
-        name: formData.name,
-        email: formData.email,
-        schoolMemberships: {},
-        joinedAt: new Date().toISOString(),
+      const result = await register(formData.name, formData.email, formData.password)
+
+      if (result.success) {
+        // Small delay to ensure state propagates
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        router.push("/gateway")
+      } else {
+        setError(result.error || "Registration failed. Please try again.")
       }
-
-      localStorage.setItem("class-memory-rooms-auth", JSON.stringify({ user: newUser, isAuthenticated: true }))
-
-      window.dispatchEvent(new Event("storage"))
-
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      router.push("/gateway")
     } catch (error) {
       console.error("Signup error:", error)
+      setError("An unexpected error occurred. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -57,8 +50,6 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       <main className="container mx-auto px-4 py-16 md:py-24">
         <div className="max-w-md mx-auto">
           <div className="paper-card p-8 md:p-10 sketch-shadow">
@@ -115,6 +106,13 @@ export default function SignupPage() {
                   disabled={isLoading}
                 />
               </div>
+
+              {error && (
+                <div className="paper-card bg-red-50 border-2 border-red-200 p-4 flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-800 font-medium">{error}</p>
+                </div>
+              )}
 
               <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
                 <UserPlus className="mr-2 h-5 w-5" /> {isLoading ? "Creating account..." : "Create Account"}

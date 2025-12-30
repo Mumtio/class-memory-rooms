@@ -3,7 +3,6 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,12 +16,10 @@ import { useToast } from "@/hooks/use-toast"
 export default function CreateSchoolPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const [formData, setFormData] = useState({
     schoolName: "",
     description: "",
-    userName: "",
-    userEmail: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [successState, setSuccessState] = useState<{
@@ -40,22 +37,48 @@ export default function CreateSchoolPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to create a school.",
+        variant: "destructive",
+      })
+      return
+    }
+    
     setIsSubmitting(true)
 
-    await new Promise((resolve) => setTimeout(resolve, 800))
+    try {
+      const result = await createSchool(formData.schoolName, user.name, user.email)
 
-    const user = createSchool(formData.schoolName, formData.userName, formData.userEmail)
+      if (!result.success) {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to create school. Please try again.",
+          variant: "destructive",
+        })
+        setIsSubmitting(false)
+        return
+      }
 
-    // Create workspace and get join key
-    const workspace = createWorkspace(formData.schoolName, formData.description, user.id)
+      // Create workspace for local state (this can be removed later when fully integrated)
+      const workspace = createWorkspace(formData.schoolName, formData.description, user.id)
 
-    const actualSchoolId = user.currentSchoolId || Object.keys(user.schoolMemberships)[0]
-
-    setSuccessState({
-      schoolId: actualSchoolId,
-      joinKey: workspace.joinKey,
-    })
-    setIsSubmitting(false)
+      setSuccessState({
+        schoolId: result.schoolId!,
+        joinKey: result.joinKey!,
+      })
+    } catch (error) {
+      console.error("Create school error:", error)
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const copyJoinKey = () => {
@@ -91,12 +114,11 @@ export default function CreateSchoolPage() {
     }
   }
 
-  const isValid = formData.schoolName && formData.userName && formData.userEmail
+  const isValid = formData.schoolName
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !user) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar />
         <main className="container mx-auto px-4 py-16">
           <div className="max-w-md mx-auto paper-card p-12 text-center">
             <p className="text-muted">Redirecting to login...</p>
@@ -108,8 +130,6 @@ export default function CreateSchoolPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       <main className="container mx-auto px-4 py-16 md:py-24">
         <div className="max-w-[520px] mx-auto">
           {!successState ? (
@@ -158,36 +178,13 @@ export default function CreateSchoolPage() {
                     />
                   </div>
 
-                  {/* Your info section */}
-                  <div className="pt-4 border-t-2 border-dashed border-muted space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="userName" className="text-ink font-semibold">
-                        Your Name <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="userName"
-                        type="text"
-                        placeholder="e.g., Alex Johnson"
-                        value={formData.userName}
-                        onChange={(e) => setFormData({ ...formData, userName: e.target.value })}
-                        required
-                        className="bg-background"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="userEmail" className="text-ink font-semibold">
-                        Your Email <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="userEmail"
-                        type="email"
-                        placeholder="e.g., alex@school.edu"
-                        value={formData.userEmail}
-                        onChange={(e) => setFormData({ ...formData, userEmail: e.target.value })}
-                        required
-                        className="bg-background"
-                      />
+                  {/* Logged in user info display */}
+                  <div className="pt-4 border-t-2 border-dashed border-muted">
+                    <div className="bg-primary/5 border-2 border-primary/20 rounded-2xl p-4">
+                      <p className="text-sm font-semibold text-ink mb-2">Creating as:</p>
+                      <p className="text-sm text-muted">
+                        <strong>{user.name}</strong> ({user.email})
+                      </p>
                     </div>
                   </div>
 

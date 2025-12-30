@@ -1,6 +1,6 @@
 "use client"
 
-import { Navbar } from "@/components/navbar"
+import { use } from "react"
 import { SchoolPageContent } from "@/components/school-page-content"
 
 interface SchoolPageProps {
@@ -9,12 +9,11 @@ interface SchoolPageProps {
   }>
 }
 
-export default async function SchoolPage({ params }: SchoolPageProps) {
-  const { schoolId } = await params
+export default function SchoolPage({ params }: SchoolPageProps) {
+  const { schoolId } = use(params)
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
       <SchoolPageContent schoolId={schoolId} />
     </div>
   )

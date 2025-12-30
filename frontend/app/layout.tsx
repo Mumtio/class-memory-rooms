@@ -4,6 +4,7 @@ import { Inter, Fraunces } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { ActiveSchoolWrapper } from "@/components/active-school-wrapper"
+import { Navbar } from "@/components/navbar"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -46,9 +47,12 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} ${fraunces.variable} antialiased`}>
-        <ActiveSchoolWrapper>{children}</ActiveSchoolWrapper>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} ${fraunces.variable} antialiased`} suppressHydrationWarning>
+        <ActiveSchoolWrapper>
+          <Navbar />
+          {children}
+        </ActiveSchoolWrapper>
         <Analytics />
       </body>
     </html>

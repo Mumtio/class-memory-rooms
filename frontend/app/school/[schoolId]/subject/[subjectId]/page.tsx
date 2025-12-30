@@ -1,4 +1,3 @@
-import { Navbar } from "@/components/navbar"
 import { Breadcrumbs } from "@/components/breadcrumbs"
 import { CourseRow } from "@/components/course-row"
 import { Button } from "@/components/ui/button"
@@ -25,8 +24,6 @@ export default async function SubjectPage({ params }: SubjectPageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       <div className="container mx-auto px-4 py-8">
         <Breadcrumbs
           items={[

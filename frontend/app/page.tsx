@@ -1,55 +1,17 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Navbar } from "@/components/navbar"
 import { getFeaturedChapters, getCourse, getSubjectByCourse } from "@/lib/mock-data"
 import { ArrowRight, Users, Sparkles, BookOpen } from "lucide-react"
+import { HeroSection } from "@/components/hero-section"
+import { CTASection } from "@/components/cta-section"
 
 export default function HomePage() {
   const featuredChapters = getFeaturedChapters(3)
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       {/* Hero Section */}
-      <section className="container mx-auto px-4 py-16 md:py-24">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-bold text-ink mb-6 text-balance">
-            Your class notes,
-            <br />
-            <span className="relative inline-block">
-              <span className="relative z-10">together</span>
-              <svg
-                className="absolute -bottom-2 left-0 w-full h-4 text-primary"
-                viewBox="0 0 200 12"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M2 8C30 4 50 6 100 5C150 4 170 6 198 8"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </span>
-          </h1>
-          <p className="text-lg md:text-xl text-muted mb-8 max-w-2xl mx-auto leading-relaxed">
-            A warm, collaborative space where students compile lecture notes, share insights, and build knowledge rooms
-            that everyone can learn from.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button size="lg" className="text-lg px-8" asChild>
-              <Link href="/signup">
-                Get Started <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="outline" className="text-lg px-8 bg-transparent" asChild>
-              <Link href="#how-it-works">How it works</Link>
-            </Button>
-          </div>
-        </div>
-      </section>
+      <HeroSection />
 
       {/* How It Works Section */}
       <section id="how-it-works" className="container mx-auto px-4 py-16 md:py-20">
@@ -198,19 +160,7 @@ export default function HomePage() {
       </section>
 
       {/* CTA Section */}
-      <section className="container mx-auto px-4 py-16 md:py-20">
-        <div className="max-w-4xl mx-auto text-center paper-card p-12 sketch-shadow">
-          <h2 className="font-serif text-3xl md:text-4xl font-bold text-ink mb-4">Ready to start learning together?</h2>
-          <p className="text-lg text-muted mb-8 max-w-2xl mx-auto">
-            Join thousands of students already collaborating on notes, sharing knowledge, and acing their exams.
-          </p>
-          <Button size="lg" className="text-lg px-8" asChild>
-            <Link href="/signup">
-              Get started <ArrowRight className="ml-2 h-5 w-5" />
-            </Link>
-          </Button>
-        </div>
-      </section>
+      <CTASection />
 
       {/* Footer */}
       <footer className="border-t-2 border-border bg-card mt-20">

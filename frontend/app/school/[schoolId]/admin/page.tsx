@@ -1,4 +1,3 @@
-import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
@@ -13,8 +12,6 @@ export default async function AdminDashboardPage({
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       <main className="container mx-auto px-4 py-8">
         <Button variant="ghost" asChild className="mb-6">
           <Link href={`/school/${schoolId}`}>

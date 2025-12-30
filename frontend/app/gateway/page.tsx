@@ -5,20 +5,25 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-store"
 import { useActiveSchool } from "@/lib/active-school-context"
 import { DEMO_SCHOOL_ID } from "@/lib/demo-school"
-import { Navbar } from "@/components/navbar"
 import { GatewayCard } from "@/components/gateway-card"
 import { FolderPlus, KeyRound } from "lucide-react"
 
 export default function GatewayPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isHydrated } = useAuth()
   const { setActiveSchool } = useActiveSchool()
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Wait for hydration before redirecting
+    if (isHydrated && !isAuthenticated) {
       router.replace("/signup")
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, isHydrated, router])
+
+  // Show loading while hydrating
+  if (!isHydrated) {
+    return null
+  }
 
   if (!isAuthenticated) {
     return null
@@ -31,8 +36,6 @@ export default function GatewayPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       <main className="container mx-auto px-4 py-16 md:py-24">
         <div className="max-w-5xl mx-auto">
           {/* Header */}

@@ -3,7 +3,6 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -66,7 +65,6 @@ export default function JoinSchoolPage() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar />
         <main className="container mx-auto px-4 py-16">
           <div className="max-w-md mx-auto paper-card p-12 text-center">
             <p className="text-muted">Redirecting to login...</p>
@@ -78,8 +76,6 @@ export default function JoinSchoolPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       <main className="container mx-auto px-4 py-16 md:py-24">
         <div className="max-w-[480px] mx-auto">
           <Button variant="ghost" asChild className="mb-6">

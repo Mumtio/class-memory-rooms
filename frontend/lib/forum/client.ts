@@ -7,28 +7,25 @@
 export interface ForumThread {
   id: string;
   title: string;
-  content: string;
+  body: string;
   userId: string;
   createdAt: string;
   updatedAt: string;
-  tags: string[];
-  metadata?: Record<string, any>;
   extendedData?: Record<string, any>;
-  participantCount: number;
+  participantCount?: number;
 }
 
 export interface ForumPost {
   id: string;
   threadId: string;
   userId: string;
-  content: string;
+  body: string;
   createdAt: string;
   updatedAt: string;
-  tags: string[];
-  parentPostId?: string;
-  helpfulCount: number;
-  replyCount: number;
+  parentId?: string | null;
   extendedData?: Record<string, any>;
+  helpfulCount?: number;
+  replyCount?: number;
 }
 
 import { withRetry, DEFAULT_RETRY_CONFIG } from '../error-handling';
@@ -41,13 +38,13 @@ export interface ForumUser {
 }
 
 export interface RegisterRequest {
-  name: string;
-  email: string;
+  login: string;
   password: string;
+  email?: string;
 }
 
 export interface LoginRequest {
-  email: string;
+  login: string;
   password: string;
 }
 
@@ -58,17 +55,16 @@ export interface AuthResponse {
 
 export interface CreateThreadRequest {
   title: string;
-  content: string;
-  tags: string[];
-  metadata?: Record<string, any>;
+  body: string;
+  userId: string;
   extendedData?: Record<string, any>;
 }
 
 export interface CreatePostRequest {
+  body: string;
   threadId: string;
-  content: string;
-  tags: string[];
-  parentPostId?: string;
+  userId: string;
+  parentId?: string | null;
   extendedData?: Record<string, any>;
 }
 
@@ -203,67 +199,67 @@ class ForumClient {
 
   // Thread operations
   async createThread(data: CreateThreadRequest): Promise<ForumThread> {
-    return this.request<ForumThread>('/threads', {
+    return this.request<ForumThread>('/thread', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
   async getThread(threadId: string): Promise<ForumThread> {
-    return withRetry(() => this.request<ForumThread>(`/threads/${threadId}`));
+    return withRetry(() => this.request<ForumThread>(`/thread/${threadId}`));
   }
 
   async updateThread(
     threadId: string,
     data: Partial<CreateThreadRequest>
   ): Promise<ForumThread> {
-    return this.request<ForumThread>(`/threads/${threadId}`, {
+    return this.request<ForumThread>(`/thread/${threadId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
 
   async getThreadsByTag(tag: string): Promise<ForumThread[]> {
-    return withRetry(() => this.request<ForumThread[]>(`/threads?tag=${encodeURIComponent(tag)}`));
+    return withRetry(() => this.request<ForumThread[]>(`/thread?tag=${encodeURIComponent(tag)}`));
   }
 
   async getThreadsByType(type: string): Promise<ForumThread[]> {
-    return withRetry(() => this.request<ForumThread[]>(`/threads?extendedData.type=${encodeURIComponent(type)}`));
+    return withRetry(() => this.request<ForumThread[]>(`/thread?extendedData.type=${encodeURIComponent(type)}`));
   }
 
   // Post operations
   async createPost(data: CreatePostRequest): Promise<ForumPost> {
-    return this.request<ForumPost>('/posts', {
+    return this.request<ForumPost>('/post', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
   async getPost(postId: string): Promise<ForumPost> {
-    return withRetry(() => this.request<ForumPost>(`/posts/${postId}`));
+    return withRetry(() => this.request<ForumPost>(`/post/${postId}`));
   }
 
   async getPostsByThread(threadId: string): Promise<ForumPost[]> {
-    return withRetry(() => this.request<ForumPost[]>(`/threads/${threadId}/posts`));
+    return withRetry(() => this.request<ForumPost[]>(`/thread/${threadId}/posts`));
   }
 
   async getPostsByTag(tag: string): Promise<ForumPost[]> {
-    return withRetry(() => this.request<ForumPost[]>(`/posts?tag=${encodeURIComponent(tag)}`));
+    return withRetry(() => this.request<ForumPost[]>(`/post?tag=${encodeURIComponent(tag)}`));
   }
 
   async getPostsByType(type: string): Promise<ForumPost[]> {
-    return withRetry(() => this.request<ForumPost[]>(`/posts?extendedData.type=${encodeURIComponent(type)}`));
+    return withRetry(() => this.request<ForumPost[]>(`/post?extendedData.type=${encodeURIComponent(type)}`));
   }
 
   async updatePost(postId: string, content: string): Promise<ForumPost> {
-    return this.request<ForumPost>(`/posts/${postId}`, {
+    return this.request<ForumPost>(`/post/${postId}`, {
       method: 'PATCH',
       body: JSON.stringify({ content }),
     });
   }
 
   async deletePost(postId: string): Promise<void> {
-    await this.request(`/posts/${postId}`, {
+    await this.request(`/post/${postId}`, {
       method: 'DELETE',
     });
   }
@@ -275,20 +271,20 @@ class ForumClient {
 
   // Thread membership operations
   async addThreadParticipant(threadId: string, userId: string): Promise<void> {
-    await this.request(`/threads/${threadId}/participants`, {
+    await this.request(`/thread/${threadId}/participants`, {
       method: 'POST',
       body: JSON.stringify({ userId }),
     });
   }
 
   async removeThreadParticipant(threadId: string, userId: string): Promise<void> {
-    await this.request(`/threads/${threadId}/participants/${userId}`, {
+    await this.request(`/thread/${threadId}/participants/${userId}`, {
       method: 'DELETE',
     });
   }
 
   async getThreadParticipants(threadId: string): Promise<ForumUser[]> {
-    return withRetry(() => this.request<ForumUser[]>(`/threads/${threadId}/participants`));
+    return withRetry(() => this.request<ForumUser[]>(`/thread/${threadId}/participants`));
   }
 
   // Search operations
@@ -313,14 +309,14 @@ class ForumClient {
 
   // Helpful/reaction operations
   async markPostHelpful(postId: string, userId: string): Promise<void> {
-    await this.request(`/posts/${postId}/helpful`, {
+    await this.request(`/post/${postId}/helpful`, {
       method: 'POST',
       body: JSON.stringify({ userId }),
     });
   }
 
   async unmarkPostHelpful(postId: string, userId: string): Promise<void> {
-    await this.request(`/posts/${postId}/helpful`, {
+    await this.request(`/post/${postId}/helpful`, {
       method: 'DELETE',
       body: JSON.stringify({ userId }),
     });

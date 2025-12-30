@@ -19,7 +19,15 @@ export interface ActiveSchoolContextType {
   getUserMemberships: (user: User | null) => Membership[]
 }
 
-const ActiveSchoolContext = createContext<ActiveSchoolContextType | undefined>(undefined)
+// Create context with a default value to prevent undefined errors
+const defaultContextValue: ActiveSchoolContextType = {
+  activeSchoolId: null,
+  activeMembership: null,
+  setActiveSchool: () => {},
+  getUserMemberships: () => [],
+}
+
+const ActiveSchoolContext = createContext<ActiveSchoolContextType>(defaultContextValue)
 
 const ACTIVE_SCHOOL_KEY = "class-memory-active-school"
 
@@ -33,28 +41,7 @@ export function ActiveSchoolProvider({
   const [activeSchoolId, setActiveSchoolId] = useState<string | null>(null)
   const [isHydrated, setIsHydrated] = useState(false)
 
-  // Initialize active school from localStorage or user's current school
-  useEffect(() => {
-    setIsHydrated(true)
-    
-    if (!user) {
-      setActiveSchoolId(null)
-      return
-    }
-
-    const stored = localStorage.getItem(ACTIVE_SCHOOL_KEY)
-    const memberships = getUserMemberships(user)
-
-    if (stored && memberships.some((m) => m.schoolId === stored)) {
-      setActiveSchoolId(stored)
-    } else if (user.currentSchoolId) {
-      setActiveSchoolId(user.currentSchoolId)
-    } else if (memberships.length > 0) {
-      setActiveSchoolId(memberships[0].schoolId)
-    }
-  }, [user])
-
-  const getUserMemberships = (user: User | null): Membership[] => {
+  const getUserMemberships = React.useCallback((user: User | null): Membership[] => {
     if (!user || !user.schoolMemberships) return []
 
     return Object.entries(user.schoolMemberships).map(([schoolId, data]) => ({
@@ -64,10 +51,34 @@ export function ActiveSchoolProvider({
       role: data.role,
       joinedAt: data.joinedAt,
     }))
-  }
+  }, [])
+
+  // Initialize active school from localStorage or user's current school
+  useEffect(() => {
+    setIsHydrated(true)
+    
+    if (!user) {
+      setActiveSchoolId(null)
+      return
+    }
+
+    // Only access localStorage on client side
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(ACTIVE_SCHOOL_KEY)
+      const memberships = getUserMemberships(user)
+
+      if (stored && memberships.some((m) => m.schoolId === stored)) {
+        setActiveSchoolId(stored)
+      } else if (user.currentSchoolId) {
+        setActiveSchoolId(user.currentSchoolId)
+      } else if (memberships.length > 0) {
+        setActiveSchoolId(memberships[0].schoolId)
+      }
+    }
+  }, [user, getUserMemberships])
 
   const activeMembership: Membership | null = React.useMemo(() => {
-    if (!user || !activeSchoolId || !isHydrated) {
+    if (!user || !activeSchoolId) {
       return null
     }
 
@@ -94,24 +105,24 @@ export function ActiveSchoolProvider({
       role: data.role,
       joinedAt: data.joinedAt,
     }
-  }, [user, activeSchoolId, isHydrated])
+  }, [user, activeSchoolId])
 
-  const setActiveSchool = (schoolId: string) => {
+  const setActiveSchool = React.useCallback((schoolId: string) => {
     setActiveSchoolId(schoolId)
     if (typeof window !== "undefined") {
       localStorage.setItem(ACTIVE_SCHOOL_KEY, schoolId)
     }
-  }
+  }, [])
+
+  const contextValue = React.useMemo(() => ({
+    activeSchoolId,
+    activeMembership,
+    setActiveSchool,
+    getUserMemberships,
+  }), [activeSchoolId, activeMembership, setActiveSchool, getUserMemberships])
 
   return (
-    <ActiveSchoolContext.Provider
-      value={{
-        activeSchoolId,
-        activeMembership,
-        setActiveSchool,
-        getUserMemberships,
-      }}
-    >
+    <ActiveSchoolContext.Provider value={contextValue}>
       {children}
     </ActiveSchoolContext.Provider>
   )
@@ -119,8 +130,5 @@ export function ActiveSchoolProvider({
 
 export function useActiveSchool() {
   const context = useContext(ActiveSchoolContext)
-  if (context === undefined) {
-    throw new Error("useActiveSchool must be used within an ActiveSchoolProvider")
-  }
   return context
 }

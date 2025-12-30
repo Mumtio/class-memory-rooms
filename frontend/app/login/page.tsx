@@ -3,51 +3,44 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { LogIn } from "lucide-react"
+import { LogIn, AlertCircle } from "lucide-react"
 import Link from "next/link"
-import { useAuth } from "@/lib/auth-store"
+import { useAuth, login } from "@/lib/auth-store"
 
 export default function LoginPage() {
   const router = useRouter()
   const { isAuthenticated } = useAuth()
   const [formData, setFormData] = useState({
-    email: "",
+    username: "",
     password: "",
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      router.replace("/gateway")
-    }
-  }, [isAuthenticated, router])
+  // Don't redirect if already authenticated - let them access gateway
+  // useEffect removed to allow authenticated users to visit gateway
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setError(null)
 
     try {
-      const mockUser = {
-        id: `user-${Date.now()}`,
-        name: formData.email.split("@")[0],
-        email: formData.email,
-        schoolMemberships: {},
-        joinedAt: new Date().toISOString(),
+      const result = await login(formData.username, formData.password)
+
+      if (result.success) {
+        // Small delay to ensure state propagates
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        router.push("/gateway")
+      } else {
+        setError(result.error || "Login failed. Please check your credentials.")
       }
-
-      localStorage.setItem("class-memory-rooms-auth", JSON.stringify({ user: mockUser, isAuthenticated: true }))
-
-      window.dispatchEvent(new Event("storage"))
-
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      router.push("/gateway")
     } catch (error) {
       console.error("Login error:", error)
+      setError("An unexpected error occurred. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -55,8 +48,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       <main className="container mx-auto px-4 py-16 md:py-24">
         <div className="max-w-md mx-auto">
           <div className="paper-card p-8 md:p-10 sketch-shadow">
@@ -67,15 +58,15 @@ export default function LoginPage() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-ink font-semibold">
-                  Email
+                <Label htmlFor="username" className="text-ink font-semibold">
+                  Username
                 </Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="your.email@school.edu"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  id="username"
+                  type="text"
+                  placeholder="your_username"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   required
                   className="bg-background"
                   disabled={isLoading}
@@ -97,6 +88,13 @@ export default function LoginPage() {
                   disabled={isLoading}
                 />
               </div>
+
+              {error && (
+                <div className="paper-card bg-red-50 border-2 border-red-200 p-4 flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-800 font-medium">{error}</p>
+                </div>
+              )}
 
               <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
                 <LogIn className="mr-2 h-5 w-5" /> {isLoading ? "Logging in..." : "Log In"}

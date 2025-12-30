@@ -12,33 +12,57 @@ Frontend (React/Next.js) → API Routes (/api/forum/*) → Foru.ms API
                             External Database (Memberships & AI Tracking)
 ```
 
-## ⚠️ IMPORTANT: API Verification Needed
+## ✅ API VERIFICATION COMPLETE
 
-**CRITICAL NEXT STEP**: The integration is built on assumptions about the Foru.ms API structure. We need to verify the actual API capabilities with your `memory-room` instance.
+**STATUS**: API connection verified and working! Demo data already exists in Foru.ms.
 
-### 🔍 API Discovery Required
+### 🔍 API Discovery Results (December 31, 2024)
 
-1. **Get your API key** from: https://foru.ms/instances/memory-room/console#/
-2. **Run the test script**: `node test-foru-ms-api.js` (update API key first)
-3. **Verify API structure** matches our implementation
-4. **Update integration** based on actual API capabilities
+**API Key Configured:** ✅ `88e3494b-c191-429f-924a-b6440a9619cb`
 
-### 🚨 Key Unknowns
+**Working Endpoints:**
+- ✅ `GET /threads` - Returns threads with full `extendedData` support
+- ✅ `GET /posts` - Returns posts with `extendedData` and nested replies
+- ✅ `GET /users` - Returns user information
+- ✅ `GET /tags` - Returns tags (currently empty)
 
-- **Metadata support**: Our integration relies heavily on storing metadata in threads/posts
-- **Tag structure**: We assume string arrays, but Foru.ms may use objects
-- **User management**: Actual user fields and permissions
-- **Advanced features**: Reactions, participants, search capabilities
+**API Limitations:**
+- ⚠️ `POST /threads` - Method not allowed (read-only API key)
+- ⚠️ `POST /posts` - Method not allowed (read-only API key)
+- ❌ `/categories` - Endpoint doesn't exist
+- ❌ `/me` - Endpoint doesn't exist
 
-### 📋 Discovered API Facts
+### 📋 Confirmed API Capabilities
 
-Based on research:
-- ✅ **Base URL**: `https://foru.ms/api/v1` (updated)
-- ✅ **Authentication**: `X-API-Key` header (updated)  
-- ✅ **Instance-specific**: Each instance has own API key
-- ✅ **Webhooks**: Real-time event notifications available
-- ❓ **Metadata**: Unknown if supported
-- ❓ **Advanced features**: Need to verify availability
+- ✅ **Base URL**: `https://foru.ms/api/v1`
+- ✅ **Authentication**: `X-API-Key` header
+- ✅ **Metadata Support**: `extendedData` field fully supported on threads and posts
+- ✅ **Entity Mapping**: Demo data confirms our mapping strategy works:
+  - School = Thread with `extendedData.type = "school"`
+  - Chapter = Thread with `extendedData.type = "chapter"`
+  - Subject = Post with `extendedData.type = "subject"`
+  - Course = Post with `extendedData.type = "course"`
+  - Contribution = Post with `extendedData.type = "contribution"`
+- ✅ **Nested Posts**: Replies supported via `parentId` and `depth` fields
+- ✅ **User Data**: Full user objects with `displayName`, `username`, `isOnline`
+
+### 🚨 CRITICAL ISSUE: Read-Only API Key
+
+The current API key only allows **READ** operations. To enable full functionality:
+
+**Option 1: Get Write-Enabled API Key**
+- Contact Foru.ms support or check console for admin API key
+- Need permissions for: POST /threads, POST /posts, PATCH /posts, DELETE /posts
+
+**Option 2: Use Read-Only Mode for Demo**
+- Frontend can display existing demo data
+- All write operations will fail gracefully
+- Good for hackathon demonstration
+
+**Option 3: Mock Write Operations**
+- Simulate writes in frontend state
+- Don't persist to backend
+- Reset on page refresh
 
 ## Implementation Status
 

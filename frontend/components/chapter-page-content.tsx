@@ -70,7 +70,7 @@ export function ChapterPageContent({
     anonymous: boolean
   }) => {
     const newContribution: Contribution = {
-      id: `cont-new-${Date.now()}`,
+      id: `cont-new-${crypto.randomUUID()}`,
       chapterId,
       type: data.type,
       title: data.title,

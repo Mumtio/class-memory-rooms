@@ -1,4 +1,3 @@
-import { Navbar } from "@/components/navbar"
 import { ChapterPageContent } from "@/components/chapter-page-content"
 import {
   chapters,
@@ -32,8 +31,6 @@ export default async function ChapterPage({ params }: ChapterPageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       <div className="container mx-auto px-4 py-6">
         <ChapterPageContent
           chapterId={chapterId}

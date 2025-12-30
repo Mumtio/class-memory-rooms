@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, Suspense } from "react"
-import { Navbar } from "@/components/navbar"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -298,8 +297,6 @@ function SearchPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-
       <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
           <aside className="hidden lg:block">
