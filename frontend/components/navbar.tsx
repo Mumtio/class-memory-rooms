@@ -4,7 +4,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { DemoModeBadge } from "@/components/demo-mode-badge"
 import { useAuth } from "@/lib/auth-store"
 import { can } from "@/lib/permissions"
 import { SchoolSwitcher } from "@/components/school-switcher"
@@ -67,7 +66,6 @@ export function Navbar() {
               <span className="font-serif font-bold text-xl text-ink">Memory Rooms</span>
             </Link>
             <div className="flex items-center gap-3">
-              <DemoModeBadge />
               {/* Placeholder to prevent layout shift */}
               <div className="h-9 w-32"></div>
             </div>
@@ -121,7 +119,6 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-3">
-            <DemoModeBadge />
             {isAuthenticated && user ? (
               <>
                 <SchoolSwitcher />
