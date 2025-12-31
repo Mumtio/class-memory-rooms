@@ -4,11 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions, getAuthenticatedForumClient } from '@/lib/auth';
-import { db } from '@/lib/database';
+import { forumClient } from '@/lib/forum/client';
 import { mapPostsToCourses } from '@/lib/forum/mappers';
-import { checkSchoolMembership, checkPermission } from '@/lib/permission-middleware';
 
 // GET /api/forum/schools/[schoolId]/subjects/[subjectId]/courses - Get all courses in a subject
 export async function GET(
@@ -18,20 +15,8 @@ export async function GET(
   try {
     const { schoolId, subjectId } = await params;
 
-    // Check if user has access to this school using permission middleware
-    const membershipCheck = await checkSchoolMembership(schoolId);
-    if (!membershipCheck.success) {
-      return NextResponse.json(
-        { error: membershipCheck.error!.message },
-        { status: membershipCheck.error!.status }
-      );
-    }
-
-    // Get authenticated client
-    const authenticatedClient = await getAuthenticatedForumClient();
-
     // Get all posts in the school thread
-    const posts = await authenticatedClient.getPostsByThread(schoolId);
+    const posts = await forumClient.getPostsByThread(schoolId);
 
     // Filter for course posts that belong to this subject
     const coursePosts = posts.filter(post => 
@@ -60,51 +45,32 @@ export async function POST(
   try {
     const { schoolId, subjectId } = await params;
     const body = await request.json();
-    const { code, name, description, teacher, term } = body;
-
-    // Check permissions - only teachers and admins can create courses
-    const permissionCheck = await checkPermission(schoolId, 'create_course');
-    if (!permissionCheck.success) {
-      return NextResponse.json(
-        { error: permissionCheck.error!.message },
-        { status: permissionCheck.error!.status }
-      );
-    }
+    const { code, title, teacher, term, userId } = body;
 
     // Validate input
-    if (!code || code.trim().length < 3) {
+    if (!code || code.trim().length < 1) {
       return NextResponse.json(
-        { error: 'Course code must be at least 3 characters' },
+        { error: 'Course code is required' },
         { status: 400 }
       );
     }
 
-    if (!name || name.trim().length < 1) {
+    if (!title || title.trim().length < 1) {
       return NextResponse.json(
-        { error: 'Course name is required' },
+        { error: 'Course title is required' },
         { status: 400 }
       );
     }
 
-    if (!teacher || teacher.trim().length < 1) {
+    if (!userId) {
       return NextResponse.json(
-        { error: 'Teacher name is required' },
+        { error: 'User ID is required' },
         { status: 400 }
       );
     }
-
-    if (!term || term.trim().length < 1) {
-      return NextResponse.json(
-        { error: 'Term is required' },
-        { status: 400 }
-      );
-    }
-
-    // Get authenticated client
-    const authenticatedClient = await getAuthenticatedForumClient();
 
     // Verify subject exists
-    const schoolPosts = await authenticatedClient.getPostsByThread(schoolId);
+    const schoolPosts = await forumClient.getPostsByThread(schoolId);
     const subjectExists = schoolPosts.some(post => 
       post.id === subjectId && post.extendedData?.type === 'subject'
     );
@@ -117,20 +83,20 @@ export async function POST(
     }
 
     // Create course post in Foru.ms with proper extendedData structure
-    const post = await authenticatedClient.createPost({
+    const post = await forumClient.createPost({
       threadId: schoolId,
-      content: description || '',
-      tags: ['course'],
+      body: title.trim(),
+      userId: userId,
       extendedData: {
         type: 'course',
         code: code.trim().toUpperCase(),
-        name: name.trim(),
-        description: description?.trim() || '',
-        teacher: teacher.trim(),
-        term: term.trim(),
+        title: title.trim(),
+        teacher: teacher?.trim() || 'TBD',
+        term: term?.trim() || 'Current',
+        section: 'A',
         subjectId: subjectId,
         schoolId: schoolId,
-        createdBy: permissionCheck.userId
+        createdBy: userId
       }
     });
 

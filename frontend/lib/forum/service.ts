@@ -12,7 +12,6 @@ export interface ForumService {
   getSchoolsForUser(userId: string): Promise<School[]>;
   createSchool(name: string, description: string, userId: string): Promise<{schoolId: string, joinKey: string}>;
   joinSchool(userId: string, joinKey: string): Promise<{schoolId: string, role: UserRole}>;
-  joinDemoSchool(userId: string): Promise<{schoolId: string, role: UserRole}>;
   
   // School Management
   getSchoolMembers(schoolId: string): Promise<Member[]>;
@@ -350,20 +349,6 @@ class ForumServiceImpl implements ForumService {
         throw error;
       }
       throw new ServiceError(`Failed to join school with key ${cleanJoinKey}`, 'JOIN_SCHOOL_ERROR');
-    }
-  }
-
-  async joinDemoSchool(userId: string): Promise<{schoolId: string, role: UserRole}> {
-    try {
-      return await this.apiCall<{schoolId: string, role: UserRole}>('/schools/demo/join', {
-        method: 'POST',
-        body: JSON.stringify({ userId }),
-      });
-    } catch (error) {
-      if (error instanceof ServiceError) {
-        throw error;
-      }
-      throw new ServiceError('Failed to join demo school', 'JOIN_DEMO_ERROR');
     }
   }
 

@@ -42,15 +42,7 @@ export async function POST(
       );
     }
 
-    // 4. Block Demo School admin actions
-    if (db.isDemoSchool(schoolId)) {
-      return NextResponse.json(
-        { error: 'Role changes not allowed in Demo School' },
-        { status: 403 }
-      );
-    }
-
-    // 5. Check if target user is a member of this school
+    // 4. Check if target user is a member of this school
     const targetMembership = await db.getSchoolMembership(userId, schoolId);
     if (!targetMembership) {
       return NextResponse.json(
@@ -59,7 +51,7 @@ export async function POST(
       );
     }
 
-    // 6. Prevent self-demotion (admin cannot demote themselves)
+    // 5. Prevent self-demotion (admin cannot demote themselves)
     if (adminUserId === userId && newRole !== 'admin') {
       return NextResponse.json(
         { error: 'Cannot change your own admin role' },
@@ -67,7 +59,7 @@ export async function POST(
       );
     }
 
-    // 7. Update the user's role
+    // 6. Update the user's role
     await db.updateMembershipRole(userId, schoolId, newRole);
 
     return NextResponse.json({

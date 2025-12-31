@@ -1,6 +1,10 @@
-import { Sparkles, ArrowRight } from "lucide-react"
+"use client"
+
+import { Sparkles, ArrowRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useTransition } from "react"
 import type { UnifiedNotes } from "@/types/models"
 import { useAIGenerationStore } from "@/lib/ai-generation-store"
 
@@ -10,8 +14,16 @@ interface UnifiedNotesPreviewProps {
 }
 
 export function UnifiedNotesPreview({ chapterId, notes }: UnifiedNotesPreviewProps) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
   const { getLastGeneration } = useAIGenerationStore()
   const lastGen = getLastGeneration(chapterId)
+
+  const handleOpenNotes = () => {
+    startTransition(() => {
+      router.push(`/chapter/${chapterId}/notes`)
+    })
+  }
 
   return (
     <div className="paper-card p-6 bg-ai-highlight/10 border-2 border-ai-highlight">
@@ -47,11 +59,18 @@ export function UnifiedNotesPreview({ chapterId, notes }: UnifiedNotesPreviewPro
         </ul>
       </div>
 
-      <Button asChild className="w-full">
-        <Link href={`/chapter/${chapterId}/notes`}>
-          Open Full Notes
-          <ArrowRight className="h-4 w-4 ml-2" />
-        </Link>
+      <Button className="w-full" onClick={handleOpenNotes} disabled={isPending}>
+        {isPending ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Loading...
+          </>
+        ) : (
+          <>
+            Open Full Notes
+            <ArrowRight className="h-4 w-4 ml-2" />
+          </>
+        )}
       </Button>
     </div>
   )

@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedForumClient } from '@/lib/auth';
+import { forumClient } from '@/lib/forum/client';
 import { mapPostsToSubjects } from '@/lib/forum/mappers';
 
 // GET /api/forum/schools/[schoolId] - Get school details with subjects
@@ -15,13 +15,19 @@ export async function GET(
   try {
     const { schoolId } = await params;
 
-    // Get authenticated client
-    const authenticatedClient = await getAuthenticatedForumClient();
-
-    // Get school thread
-    const schoolThread = await authenticatedClient.getThread(schoolId);
+    // Get school thread using the forum client (uses API key)
+    let schoolThread;
+    try {
+      schoolThread = await forumClient.getThread(schoolId);
+    } catch (error) {
+      console.error('Error fetching school thread:', error);
+      return NextResponse.json(
+        { error: 'School not found' },
+        { status: 404 }
+      );
+    }
     
-    if (!schoolThread || schoolThread.extendedData?.type !== 'school') {
+    if (!schoolThread) {
       return NextResponse.json(
         { error: 'School not found' },
         { status: 404 }
@@ -29,7 +35,13 @@ export async function GET(
     }
 
     // Get all posts in the school thread (subjects)
-    const posts = await authenticatedClient.getPostsByThread(schoolId);
+    let posts = [];
+    try {
+      posts = await forumClient.getPostsByThread(schoolId);
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      // Continue with empty posts - new school might not have any
+    }
 
     // Filter for subject posts
     const subjectPosts = posts.filter(post =>
@@ -43,9 +55,8 @@ export async function GET(
       school: {
         id: schoolThread.id,
         name: schoolThread.extendedData?.name || schoolThread.title,
-        description: schoolThread.extendedData?.description || schoolThread.body,
-        joinKey: schoolThread.extendedData?.joinKey,
-        isDemo: schoolThread.extendedData?.isDemo || false,
+        description: schoolThread.extendedData?.description || schoolThread.body || '',
+        joinKey: schoolThread.extendedData?.joinKey || '',
       },
       subjects
     });

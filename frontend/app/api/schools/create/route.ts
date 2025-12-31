@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.FORUMMS_API_KEY || '',
+        'X-API-Key': process.env.FORUMMS_API_KEY || '',
       },
       body: JSON.stringify({
         title: name,
@@ -40,7 +40,6 @@ export async function POST(request: NextRequest) {
           type: 'school',
           joinKey: joinKey,
           createdAt: new Date().toISOString(),
-          isDemo: false,
         },
       }),
     });

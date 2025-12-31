@@ -18,15 +18,24 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.FORUMMS_API_KEY || '',
+        'X-API-Key': process.env.FORUMMS_API_KEY || '',
       },
       body: JSON.stringify({ login, password }),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'Login failed' }));
+      
+      // Return clear error message for invalid credentials
+      if (response.status === 401 || response.status === 403) {
+        return NextResponse.json(
+          { error: 'Invalid username or password' },
+          { status: 401 }
+        );
+      }
+      
       return NextResponse.json(
-        { error: errorData.error || errorData.message || 'Invalid credentials' },
+        { error: errorData.error || errorData.message || 'Login failed' },
         { status: response.status }
       );
     }
@@ -46,7 +55,7 @@ export async function POST(request: NextRequest) {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.FORUMMS_API_KEY || '',
+        'X-API-Key': process.env.FORUMMS_API_KEY || '',
         'Authorization': `Bearer ${data.token}`,
       },
     });

@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedForumClient } from '@/lib/auth';
+import { forumClient } from '@/lib/forum/client';
 import { mapPostsToCourses } from '@/lib/forum/mappers';
 
 // GET /api/forum/schools/[schoolId]/subjects/[subjectId] - Get subject details with courses
@@ -15,11 +15,8 @@ export async function GET(
   try {
     const { schoolId, subjectId } = await params;
 
-    // Get authenticated client
-    const authenticatedClient = await getAuthenticatedForumClient();
-
     // Get school thread to get school name
-    const schoolThread = await authenticatedClient.getThread(schoolId);
+    const schoolThread = await forumClient.getThread(schoolId);
     
     if (!schoolThread || schoolThread.extendedData?.type !== 'school') {
       return NextResponse.json(
@@ -29,7 +26,7 @@ export async function GET(
     }
 
     // Get subject post
-    const subjectPost = await authenticatedClient.getPost(subjectId);
+    const subjectPost = await forumClient.getPost(subjectId);
     
     if (!subjectPost || subjectPost.extendedData?.type !== 'subject') {
       return NextResponse.json(
@@ -39,7 +36,7 @@ export async function GET(
     }
 
     // Get all posts in the school thread
-    const posts = await authenticatedClient.getPostsByThread(schoolId);
+    const posts = await forumClient.getPostsByThread(schoolId);
 
     // Filter for course posts that belong to this subject
     const coursePosts = posts.filter(post =>

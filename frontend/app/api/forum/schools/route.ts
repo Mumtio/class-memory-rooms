@@ -103,12 +103,12 @@ export async function POST(request: NextRequest) {
     const authenticatedClient = await getAuthenticatedForumClient();
     const thread = await authenticatedClient.createThread({
       title: name,
-      content: description || '',
+      body: description || '',
+      slug: generateJoinKey().toLowerCase(), // Use a unique slug
       tags: ['school'],
       extendedData: {
         type: 'school',
         joinKey,
-        isDemo: false,
         createdBy: userId,
         name: name,
         description: description || ''

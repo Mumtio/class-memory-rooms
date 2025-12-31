@@ -5,7 +5,7 @@
  */
 
 import { ForumThread, ForumPost, ForumUser } from './client';
-import { School, Subject, Course, Chapter, Contribution, AiNote, UserRole } from '@/types';
+import { School, Subject, Course, Chapter, Contribution, UnifiedNotes } from '@/types/models';
 
 // Helper to safely parse JSON metadata
 function parseMetadata(metadata: any): Record<string, any> {
@@ -19,26 +19,15 @@ function parseMetadata(metadata: any): Record<string, any> {
   return metadata || {};
 }
 
-// Helper to extract tag by prefix
-function getTagValue(tags: string[], prefix: string): string | undefined {
-  const tag = tags.find(t => t.startsWith(prefix));
-  return tag ? tag.substring(prefix.length) : undefined;
-}
-
 // Map Foru.ms thread to School
-export function mapThreadToSchool(thread: ForumThread, userRole?: UserRole): School {
+export function mapThreadToSchool(thread: ForumThread): School {
   const extendedData = thread.extendedData || {};
   
   return {
     id: thread.id,
     name: thread.title,
-    description: thread.content || undefined,
-    slug: extendedData.slug || thread.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    description: thread.body || extendedData.description || undefined,
     joinKey: extendedData.joinKey,
-    memberCount: thread.participantCount,
-    userRole: userRole || 'student',
-    createdAt: thread.createdAt,
-    updatedAt: thread.updatedAt,
   };
 }
 
@@ -46,26 +35,25 @@ export function mapThreadToSchool(thread: ForumThread, userRole?: UserRole): Sch
 export function mapPostToSubject(post: ForumPost): Subject {
   const extendedData = post.extendedData || {};
   
-  // Use extendedData for structured data, fallback to parsing content
+  // Use extendedData for structured data, fallback to parsing body (Foru.ms uses body, not content)
   let subjectData = extendedData;
-  if (!subjectData.name && post.content) {
+  if (!subjectData.name && post.body) {
     try {
-      subjectData = JSON.parse(post.content);
+      subjectData = JSON.parse(post.body);
     } catch {
-      // Fallback if content is not JSON
-      subjectData = { name: post.content, color: '#3B82F6' };
+      // Fallback if body is not JSON - use it as the name
+      subjectData = { name: post.body, color: '#3B82F6' };
     }
   }
 
   return {
     id: post.id,
     name: subjectData.name || 'Untitled Subject',
-    description: subjectData.description,
-    color: subjectData.color || '#3B82F6',
-    schoolId: post.threadId, // Subject post is in school thread
-    courseCount: 0, // Will be populated by aggregation
-    createdAt: post.createdAt,
-    updatedAt: post.updatedAt,
+    colorTag: subjectData.colorTag || subjectData.color || '#3B82F6',
+    courseCount: subjectData.courseCount || 0,
+    chapterCount: subjectData.chapterCount || 0,
+    compiledCount: subjectData.compiledCount || 0,
+    collectingCount: subjectData.collectingCount || 0,
   };
 }
 
@@ -73,28 +61,25 @@ export function mapPostToSubject(post: ForumPost): Subject {
 export function mapPostToCourse(post: ForumPost): Course {
   const extendedData = post.extendedData || {};
   
-  // Use extendedData for structured data, fallback to parsing content
+  // Use extendedData for structured data, fallback to parsing body (Foru.ms uses body, not content)
   let courseData = extendedData;
-  if (!courseData.name && post.content) {
+  if (!courseData.title && post.body) {
     try {
-      courseData = JSON.parse(post.content);
+      courseData = JSON.parse(post.body);
     } catch {
-      // Fallback if content is not JSON
-      courseData = { name: post.content, code: 'COURSE' };
+      // Fallback if body is not JSON
+      courseData = { title: post.body, code: 'COURSE' };
     }
   }
 
   return {
     id: post.id,
-    name: courseData.name || 'Untitled Course',
-    description: courseData.description,
+    subjectId: courseData.subjectId || post.parentId || '',
     code: courseData.code || 'COURSE',
-    subjectId: post.parentPostId || '', // Course links to subject via parentPostId
+    title: courseData.title || courseData.name || 'Untitled Course',
     teacher: courseData.teacher || 'TBD',
     term: courseData.term || 'Current',
-    chapterCount: 0, // Will be populated by aggregation
-    createdAt: post.createdAt,
-    updatedAt: post.updatedAt,
+    section: courseData.section || '',
   };
 }
 
@@ -104,90 +89,86 @@ export function mapThreadToChapter(thread: ForumThread): Chapter {
   
   return {
     id: thread.id,
-    name: thread.title,
-    description: thread.content || undefined,
     courseId: extendedData.courseId || '',
     label: extendedData.label || 'Chapter',
+    title: thread.title,
+    date: extendedData.date,
     status: extendedData.status || 'Collecting',
-    contributionCount: 0, // Will be populated by counting posts
-    hasAiNotes: false, // Will be set by checking for unified_notes posts
-    latestAiNoteVersion: undefined,
-    createdAt: thread.createdAt,
-    updatedAt: thread.updatedAt,
+    contributions: extendedData.contributionCount || 0,
+    resources: extendedData.resourceCount || 0,
+    photos: extendedData.photoCount || 0,
   };
 }
 
 // Map Foru.ms post to Contribution
 export function mapPostToContribution(post: ForumPost, author?: ForumUser): Contribution {
   const extendedData = post.extendedData || {};
-  const contributionType = extendedData.contributionType || getTagValue(post.tags, 'type:') as any || 'takeaway';
+  const contributionType = extendedData.contributionType || extendedData.type || 'takeaway';
   
-  // Use extendedData for structured data, fallback to parsing content
+  // Use extendedData for structured data, fallback to parsing body (Foru.ms uses body, not content)
   let parsedContent = extendedData;
-  if (!parsedContent.content && post.content) {
+  if (!parsedContent.content && post.body) {
     try {
-      parsedContent = JSON.parse(post.content);
+      parsedContent = JSON.parse(post.body);
     } catch {
-      // Content is plain text
-      parsedContent = { content: post.content };
+      // Body is plain text
+      parsedContent = { content: post.body };
     }
   }
 
   return {
     id: post.id,
-    title: parsedContent.title || extendedData.title || 'Untitled',
-    content: parsedContent.content || post.content,
-    type: contributionType,
-    link: parsedContent.link,
-    imageUrl: parsedContent.imageUrl,
-    links: parsedContent.links || [],
-    userId: post.userId,
     chapterId: post.threadId,
-    author: author ? {
-      id: author.id,
-      name: author.name,
-      avatar: author.avatarUrl,
-    } : {
-      id: post.userId,
-      name: 'Unknown User',
-    },
+    type: contributionType as any,
+    title: parsedContent.title || extendedData.title,
+    content: parsedContent.content || post.body,
     anonymous: parsedContent.anonymous || extendedData.anonymous || false,
-    helpfulCount: post.helpfulCount || 0,
-    replyCount: post.replyCount || 0,
+    authorName: extendedData.authorName || author?.name || 'Unknown User',
     createdAt: post.createdAt,
-    updatedAt: post.updatedAt,
+    link: parsedContent.link,
+    image: parsedContent.image,
+    helpfulCount: post.helpfulCount || 0,
   };
 }
 
-// Map Foru.ms post to AI Note
-export function mapPostToAiNote(post: ForumPost): AiNote {
+// Map Foru.ms post to Unified Notes (AI Note)
+export function mapPostToAiNote(post: ForumPost): UnifiedNotes | null {
   const extendedData = post.extendedData || {};
+  
+  // Try to parse the body as JSON for structured notes
+  let notesData: any = {};
+  if (post.body) {
+    try {
+      notesData = JSON.parse(post.body);
+    } catch {
+      // Body is not JSON, return null
+      return null;
+    }
+  }
   
   return {
     id: post.id,
-    version: extendedData.version || 1,
-    content: post.content,
-    contributionCount: extendedData.contributionCount || 0,
     chapterId: post.threadId,
-    generatedBy: {
-      id: extendedData.generatedBy || post.userId,
-      name: extendedData.generatedByName || 'AI Assistant',
-    },
-    createdAt: extendedData.generatedAt || post.createdAt,
+    version: extendedData.version || 1,
+    generatedAt: extendedData.generatedAt || post.createdAt,
+    overview: notesData.overview || [],
+    keyConcepts: notesData.keyConcepts || [],
+    definitions: notesData.definitions || [],
+    formulas: notesData.formulas || [],
+    steps: notesData.steps || [],
+    examples: notesData.examples || [],
+    mistakes: notesData.mistakes || [],
+    resources: notesData.resources || [],
+    bestNotePhotos: notesData.bestNotePhotos || [],
+    quickRevision: notesData.quickRevision || [],
   };
 }
 
-// Map array of threads to schools with role information
-export function mapThreadsToSchools(
-  threads: ForumThread[], 
-  memberships: Record<string, { role: UserRole; joinedAt: string }>
-): School[] {
+// Map array of threads to schools
+export function mapThreadsToSchools(threads: ForumThread[]): School[] {
   return threads
     .filter(thread => thread.extendedData?.type === 'school')
-    .map(thread => {
-      const membership = memberships[thread.id];
-      return mapThreadToSchool(thread, membership?.role);
-    });
+    .map(thread => mapThreadToSchool(thread));
 }
 
 // Map array of posts to subjects
@@ -222,10 +203,11 @@ export function mapPostsToContributions(
 }
 
 // Map array of posts to AI notes
-export function mapPostsToAiNotes(posts: ForumPost[]): AiNote[] {
+export function mapPostsToAiNotes(posts: ForumPost[]): UnifiedNotes[] {
   return posts
     .filter(post => post.extendedData?.type === 'unified_notes')
     .map(mapPostToAiNote)
+    .filter((note): note is UnifiedNotes => note !== null)
     .sort((a, b) => b.version - a.version); // Latest first
 }
 
@@ -237,7 +219,22 @@ export function createStructuredContent(data: {
   links?: string[];
   anonymous?: boolean;
 }): string {
-  return JSON.stringify(data);
+  // Convert imageUrl to image object format for consistency
+  const structuredData: any = {
+    title: data.title,
+    content: data.content,
+    links: data.links,
+    anonymous: data.anonymous,
+  };
+  
+  if (data.imageUrl) {
+    structuredData.image = {
+      url: data.imageUrl,
+      alt: data.title || 'Uploaded image',
+    };
+  }
+  
+  return JSON.stringify(structuredData);
 }
 
 // Helper to create metadata for threads/posts

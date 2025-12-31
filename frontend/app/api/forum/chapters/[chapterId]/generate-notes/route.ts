@@ -1,64 +1,45 @@
 /**
  * AI Notes Generation API Route Handler
  * Handles generating unified AI notes from chapter contributions
+ * Note: This is a simplified version - full AI generation requires OpenAI API key
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { forumClient } from '@/lib/forum/client';
-import { mapPostsToContributions, createMetadata } from '@/lib/forum/mappers';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { db } from '@/lib/database';
-import { checkPermission } from '@/lib/permission-middleware';
+import { mapPostsToContributions } from '@/lib/forum/mappers';
 
 // POST /api/forum/chapters/[chapterId]/generate-notes - Generate AI notes
 export async function POST(
   request: NextRequest,
-  { params }: { params: { chapterId: string } }
+  { params }: { params: Promise<{ chapterId: string }> }
 ) {
   try {
-    const { chapterId } = params;
+    const { chapterId } = await params;
     const body = await request.json();
-    const { userRole } = body;
+    const { userId, userRole } = body;
 
-    // 1. Verify chapter exists and get school context
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Verify chapter exists
     const chapter = await forumClient.getThread(chapterId);
-    if (!chapter.extendedData?.type === 'chapter') {
+    if (!chapter || chapter.extendedData?.type !== 'chapter') {
       return NextResponse.json(
         { error: 'Chapter not found' },
         { status: 404 }
       );
     }
 
-    // 2. Get school ID from chapter metadata
-    const schoolId = chapter.extendedData?.schoolId;
-    if (!schoolId) {
-      return NextResponse.json(
-        { error: 'School context not found for chapter' },
-        { status: 400 }
-      );
-    }
-
-    // 3. Check permissions using permission middleware
-    const permissionCheck = await checkPermission(schoolId, 'generate_ai_notes');
-    if (!permissionCheck.success) {
-      return NextResponse.json(
-        { error: permissionCheck.error!.message },
-        { status: permissionCheck.error!.status }
-      );
-    }
-
-    const userId = permissionCheck.userId!;
-    const userMembership = permissionCheck.membership!;
-
-    // 4. Get all contributions from Foru.ms posts
+    // 2. Get all contributions
     const posts = await forumClient.getPostsByThread(chapterId);
     const contributionPosts = posts.filter(p => p.extendedData?.type === 'contribution');
 
-    // 5. Check contribution threshold using Foru.ms-based settings
-    const aiSettings = await db.getAISettings(schoolId);
-    const minContributions = aiSettings.minContributions;
-    
+    // 3. Check minimum contributions
+    const minContributions = 2;
     if (contributionPosts.length < minContributions) {
       return NextResponse.json({
         error: `Need at least ${minContributions} contributions to generate notes`,
@@ -67,77 +48,103 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // 6. Check cooldown period using Foru.ms AI generation tracking posts
-    const lastGeneration = await db.getLastGeneration(chapterId);
-    if (lastGeneration) {
-      const cooldownHours = getCooldownHoursForRole(userMembership.role, aiSettings);
-      const cooldownMs = cooldownHours * 60 * 60 * 1000;
-      const timeSince = Date.now() - new Date(lastGeneration.generatedAt).getTime();
-      
-      if (timeSince < cooldownMs) {
-        const remainingMinutes = Math.ceil((cooldownMs - timeSince) / 60000);
-        return NextResponse.json({
-          error: 'AI notes recently generated',
-          remainingMinutes,
-          lastGeneratedAt: lastGeneration.generatedAt,
-          userRole: userMembership.role,
-          cooldownHours
-        }, { status: 403 });
-      }
-    }
-
-    // 7. Get author information for contributions
-    const authorIds = [...new Set(contributionPosts.map(p => p.userId))];
+    // 4. Get author information for contributions - prioritize extendedData.authorName
     const authors: Record<string, any> = {};
+    const userIdsToFetch: string[] = [];
     
-    for (const authorId of authorIds) {
-      try {
-        const user = await forumClient.getUser(authorId);
-        authors[authorId] = user;
-      } catch (error) {
-        authors[authorId] = { id: authorId, name: 'Unknown User' };
+    for (const post of contributionPosts) {
+      if (post.extendedData?.authorName) {
+        authors[post.userId] = { id: post.userId, name: post.extendedData.authorName };
+      } else if (!authors[post.userId] && !userIdsToFetch.includes(post.userId)) {
+        userIdsToFetch.push(post.userId);
       }
     }
+    
+    // Batch fetch remaining users in parallel (for legacy posts without authorName)
+    if (userIdsToFetch.length > 0) {
+      const userResults = await Promise.all(
+        userIdsToFetch.map(async (userId) => {
+          try {
+            return await forumClient.getUser(userId);
+          } catch {
+            return { id: userId, name: 'Unknown User' };
+          }
+        })
+      );
+      
+      userResults.forEach((user) => {
+        authors[user.id] = user;
+      });
+    }
 
-    // 8. Map contributions to frontend format
+    // 5. Map contributions
     const contributions = mapPostsToContributions(contributionPosts, authors);
 
-    // 9. Build AI prompt
+    // 6. Check if OpenAI API key is configured
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      // Return mock notes for demo purposes
+      const mockNotes = generateMockNotes(chapter, contributions);
+      
+      // Get next version number
+      const existingNotes = posts.filter(p => p.extendedData?.type === 'unified_notes');
+      const nextVersion = existingNotes.length + 1;
+
+      // Save mock notes to Foru.ms
+      const notesPost = await forumClient.createPost({
+        threadId: chapterId,
+        body: JSON.stringify(mockNotes),
+        userId: userId,
+        extendedData: {
+          type: 'unified_notes',
+          version: nextVersion,
+          generatedBy: userId,
+          generatorRole: userRole || 'student',
+          generatedAt: new Date().toISOString(),
+          contributionCount: contributions.length,
+        }
+      });
+
+      return NextResponse.json({
+        postId: notesPost.id,
+        version: nextVersion,
+        notes: mockNotes,
+        contributionCount: contributions.length,
+        message: 'Notes generated successfully (demo mode)',
+      });
+    }
+
+    // 7. Generate with OpenAI
     const prompt = buildAIPrompt(chapter, contributions);
+    const aiResponse = await generateNotesWithAI(prompt, openaiApiKey);
 
-    // 10. Call AI service
-    const aiResponse = await generateNotesWithAI(prompt);
-
-    // 11. Get next version number from existing unified_notes posts
+    // 8. Get next version number
     const existingNotes = posts.filter(p => p.extendedData?.type === 'unified_notes');
     const nextVersion = existingNotes.length + 1;
 
-    // 12. Create unified notes post with proper Foru.ms extendedData structure
+    // 9. Parse AI response into structured format
+    const structuredNotes = parseAIResponse(aiResponse.content, chapter);
+
+    // 10. Save notes to Foru.ms
     const notesPost = await forumClient.createPost({
       threadId: chapterId,
-      content: aiResponse.content,
-      tags: ['unified_notes'],
+      body: JSON.stringify(structuredNotes),
+      userId: userId,
       extendedData: {
         type: 'unified_notes',
         version: nextVersion,
         generatedBy: userId,
-        generatorRole: userMembership.role,
+        generatorRole: userRole || 'student',
         generatedAt: new Date().toISOString(),
         contributionCount: contributions.length,
-        schoolId: schoolId,
-        chapterId: chapterId
       }
     });
-
-    // 13. Record generation in Foru.ms AI generation tracking posts
-    await db.recordGeneration(chapterId, userId, userMembership.role, contributions.length);
 
     return NextResponse.json({
       postId: notesPost.id,
       version: nextVersion,
-      content: aiResponse.content,
+      notes: structuredNotes,
       contributionCount: contributions.length,
-      generatedBy: userMembership.role,
       message: 'AI notes generated successfully',
     });
   } catch (error) {
@@ -149,14 +156,40 @@ export async function POST(
   }
 }
 
-// Helper functions
-function getCooldownHoursForRole(role: string, aiSettings: any): number {
-  switch (role) {
-    case 'student': return aiSettings.studentCooldown || 2;
-    case 'teacher': return aiSettings.teacherCooldown || 0.5; // 30 minutes
-    case 'admin': return 0; // No cooldown
-    default: return aiSettings.studentCooldown || 2; // Default to student
-  }
+// Generate mock notes for demo when OpenAI is not configured
+function generateMockNotes(chapter: any, contributions: any[]) {
+  const takeaways = contributions.filter(c => c.type === 'takeaway');
+  const confusions = contributions.filter(c => c.type === 'confusion');
+  const examples = contributions.filter(c => c.type === 'solved_example');
+  const resources = contributions.filter(c => c.type === 'resource' || c.link);
+
+  return {
+    id: `notes-${Date.now()}`,
+    chapterId: chapter.id,
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    overview: takeaways.slice(0, 3).map(t => t.content || t.title || 'Key concept from class'),
+    keyConcepts: takeaways.slice(0, 4).map((t, i) => ({
+      title: t.title || `Concept ${i + 1}`,
+      explanation: t.content || 'Important concept discussed in class',
+    })),
+    definitions: [],
+    formulas: [],
+    steps: ['Review the key concepts', 'Practice with examples', 'Ask questions about confusing topics'],
+    examples: examples.slice(0, 2).map((e, i) => ({
+      title: e.title || `Example ${i + 1}`,
+      problem: e.content || 'Practice problem',
+      solution: 'Solution steps would be generated by AI',
+    })),
+    mistakes: confusions.slice(0, 3).map(c => c.content || c.title || 'Common confusion point'),
+    resources: resources.slice(0, 3).map(r => ({
+      title: r.link?.title || r.title || 'Resource',
+      url: r.link?.url || '#',
+      type: 'link' as const,
+    })),
+    bestNotePhotos: [],
+    quickRevision: takeaways.slice(0, 5).map(t => t.title || t.content?.slice(0, 50) || 'Review point'),
+  };
 }
 
 function buildAIPrompt(chapter: any, contributions: any[]): string {
@@ -172,34 +205,29 @@ You are an AI study assistant. Generate comprehensive, well-structured unified n
 ${contributions.map((c, i) => `
 ${i + 1}. [${c.type}] ${c.title || 'Untitled'}
 ${c.content}
-${c.links?.length ? `Links: ${c.links.join(', ')}` : ''}
 `).join('\n\n')}
 
 **Task:**
-Create unified lecture notes in markdown format with these sections:
-1. Overview
-2. Key Concepts (with definitions)
-3. Formulas & Equations
-4. Worked Examples (step-by-step)
-5. Common Mistakes to Avoid
-6. Additional Resources
-7. Quick Revision Sheet
+Create unified lecture notes as a JSON object with these fields:
+- overview: array of 3-5 key points
+- keyConcepts: array of {title, explanation} objects
+- definitions: array of {term, definition} objects
+- formulas: array of {name, formula, description} objects
+- steps: array of step-by-step explanation strings
+- examples: array of {title, problem, solution} objects
+- mistakes: array of common mistake strings
+- resources: array of {title, url, type} objects
+- quickRevision: array of quick review point strings
 
-Use clear headings, bullet points, and code blocks where appropriate.
-Synthesize information from all contributions.
+Return ONLY valid JSON, no markdown.
 `;
 }
 
-async function generateNotesWithAI(prompt: string): Promise<{ content: string }> {
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-  if (!openaiApiKey) {
-    throw new Error('OpenAI API key not configured');
-  }
-
+async function generateNotesWithAI(prompt: string, apiKey: string): Promise<{ content: string }> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${openaiApiKey}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -207,7 +235,7 @@ async function generateNotesWithAI(prompt: string): Promise<{ content: string }>
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful study assistant that creates comprehensive lecture notes.',
+          content: 'You are a helpful study assistant that creates comprehensive lecture notes. Always respond with valid JSON only.',
         },
         {
           role: 'user',
@@ -227,4 +255,36 @@ async function generateNotesWithAI(prompt: string): Promise<{ content: string }>
   return {
     content: result.choices[0].message.content,
   };
+}
+
+function parseAIResponse(content: string, chapter: any) {
+  try {
+    // Try to parse as JSON
+    const parsed = JSON.parse(content);
+    return {
+      id: `notes-${Date.now()}`,
+      chapterId: chapter.id,
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      ...parsed,
+    };
+  } catch {
+    // If parsing fails, return a basic structure
+    return {
+      id: `notes-${Date.now()}`,
+      chapterId: chapter.id,
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      overview: [content.slice(0, 200)],
+      keyConcepts: [],
+      definitions: [],
+      formulas: [],
+      steps: [],
+      examples: [],
+      mistakes: [],
+      resources: [],
+      bestNotePhotos: [],
+      quickRevision: [],
+    };
+  }
 }

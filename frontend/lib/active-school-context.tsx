@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import type { User, UserRole } from "@/lib/auth-store"
-import { isDemoSchool, getDemoSchoolRole, DEMO_SCHOOL_NAME } from "@/lib/demo-school"
 
 export interface Membership {
   userId: string
@@ -82,17 +81,7 @@ export function ActiveSchoolProvider({
       return null
     }
 
-    if (isDemoSchool(activeSchoolId)) {
-      return {
-        userId: user.id,
-        schoolId: activeSchoolId,
-        schoolName: DEMO_SCHOOL_NAME,
-        role: getDemoSchoolRole(), // Always "student" in demo
-        joinedAt: "2024-01-01T00:00:00.000Z", // Fixed date for demo to prevent hydration mismatch
-      }
-    }
-
-    // Regular school - get from memberships
+    // Get from memberships
     if (!user.schoolMemberships?.[activeSchoolId]) {
       return null
     }

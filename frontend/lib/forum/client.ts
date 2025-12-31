@@ -57,6 +57,10 @@ export interface CreateThreadRequest {
   title: string;
   body: string;
   userId: string;
+  slug?: string;
+  locked?: boolean;
+  pinned?: boolean;
+  tags?: string[];
   extendedData?: Record<string, any>;
 }
 
@@ -224,7 +228,11 @@ class ForumClient {
   }
 
   async getThreadsByType(type: string): Promise<ForumThread[]> {
-    return withRetry(() => this.request<ForumThread[]>(`/thread?extendedData.type=${encodeURIComponent(type)}`));
+    // Query threads by tag since extendedData filtering may not be supported
+    // We filter by extendedData.type on the client side
+    const response = await withRetry(() => this.request<{ threads: ForumThread[] }>(`/threads`));
+    const threads = response.threads || [];
+    return threads.filter(thread => thread.extendedData?.type === type);
   }
 
   // Post operations
@@ -240,21 +248,28 @@ class ForumClient {
   }
 
   async getPostsByThread(threadId: string): Promise<ForumPost[]> {
-    return withRetry(() => this.request<ForumPost[]>(`/thread/${threadId}/posts`));
+    // Use /posts endpoint with threadId filter
+    const response = await withRetry(() => this.request<{ posts: ForumPost[] }>(`/posts?threadId=${threadId}`));
+    const posts = response.posts || [];
+    // Additional client-side filter to ensure we only get posts for this thread
+    // This is a safety measure in case the API doesn't filter correctly
+    return posts.filter(post => post.threadId === threadId);
   }
 
   async getPostsByTag(tag: string): Promise<ForumPost[]> {
-    return withRetry(() => this.request<ForumPost[]>(`/post?tag=${encodeURIComponent(tag)}`));
+    const response = await withRetry(() => this.request<{ posts: ForumPost[] }>(`/posts?tag=${encodeURIComponent(tag)}`));
+    return response.posts || [];
   }
 
   async getPostsByType(type: string): Promise<ForumPost[]> {
-    return withRetry(() => this.request<ForumPost[]>(`/post?extendedData.type=${encodeURIComponent(type)}`));
+    const response = await withRetry(() => this.request<{ posts: ForumPost[] }>(`/posts?extendedData.type=${encodeURIComponent(type)}`));
+    return response.posts || [];
   }
 
   async updatePost(postId: string, content: string): Promise<ForumPost> {
     return this.request<ForumPost>(`/post/${postId}`, {
       method: 'PATCH',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ body: content }),
     });
   }
 
@@ -307,19 +322,32 @@ class ForumClient {
     });
   }
 
-  // Helpful/reaction operations
-  async markPostHelpful(postId: string, userId: string): Promise<void> {
-    await this.request(`/post/${postId}/helpful`, {
+  // Like operations (Foru.ms uses /likes endpoint)
+  async likePost(postId: string, userId: string): Promise<void> {
+    await this.request(`/post/${postId}/likes`, {
       method: 'POST',
+      body: JSON.stringify({ userId, extendedData: {} }),
+    });
+  }
+
+  async unlikePost(postId: string, userId: string): Promise<void> {
+    await this.request(`/post/${postId}/likes`, {
+      method: 'DELETE',
       body: JSON.stringify({ userId }),
     });
   }
 
+  async getPostLikes(postId: string): Promise<{ likes: any[]; count: number }> {
+    return withRetry(() => this.request<{ likes: any[]; count: number }>(`/post/${postId}/likes`));
+  }
+
+  // Legacy helpful methods - redirect to likes
+  async markPostHelpful(postId: string, userId: string): Promise<void> {
+    return this.likePost(postId, userId);
+  }
+
   async unmarkPostHelpful(postId: string, userId: string): Promise<void> {
-    await this.request(`/post/${postId}/helpful`, {
-      method: 'DELETE',
-      body: JSON.stringify({ userId }),
-    });
+    return this.unlikePost(postId, userId);
   }
 }
 

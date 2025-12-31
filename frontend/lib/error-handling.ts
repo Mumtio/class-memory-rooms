@@ -46,7 +46,6 @@ export const ERROR_CODES = {
   // Permission errors
   FORBIDDEN: 'FORBIDDEN',
   INSUFFICIENT_PERMISSIONS: 'INSUFFICIENT_PERMISSIONS',
-  DEMO_SCHOOL_RESTRICTION: 'DEMO_SCHOOL_RESTRICTION',
   
   // Validation errors
   INVALID_INPUT: 'INVALID_INPUT',
@@ -78,7 +77,6 @@ export const ERROR_MESSAGES = {
   
   [ERROR_CODES.FORBIDDEN]: 'You do not have permission to perform this action.',
   [ERROR_CODES.INSUFFICIENT_PERMISSIONS]: 'You need higher permissions to perform this action.',
-  [ERROR_CODES.DEMO_SCHOOL_RESTRICTION]: 'This action is not allowed in the Demo School.',
   
   [ERROR_CODES.INVALID_INPUT]: 'Please check your input and try again.',
   [ERROR_CODES.MISSING_REQUIRED_FIELD]: 'Please fill in all required fields.',

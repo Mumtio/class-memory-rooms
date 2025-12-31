@@ -5,6 +5,8 @@ import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { ActiveSchoolWrapper } from "@/components/active-school-wrapper"
 import { Navbar } from "@/components/navbar"
+import { Suspense } from "react"
+import { NavigationProgress } from "@/components/navigation-progress"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -50,6 +52,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} ${fraunces.variable} antialiased`} suppressHydrationWarning>
         <ActiveSchoolWrapper>
+          <Suspense fallback={null}>
+            <NavigationProgress />
+          </Suspense>
           <Navbar />
           {children}
         </ActiveSchoolWrapper>

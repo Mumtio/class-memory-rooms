@@ -4,11 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions, getAuthenticatedForumClient } from '@/lib/auth';
-import { db } from '@/lib/database';
+import { forumClient } from '@/lib/forum/client';
 import { mapPostsToSubjects } from '@/lib/forum/mappers';
-import { checkSchoolMembership, checkPermission } from '@/lib/permission-middleware';
 
 // GET /api/forum/schools/[schoolId]/subjects - Get all subjects in a school
 export async function GET(
@@ -18,20 +15,8 @@ export async function GET(
   try {
     const { schoolId } = await params;
 
-    // Check if user has access to this school using permission middleware
-    const membershipCheck = await checkSchoolMembership(schoolId);
-    if (!membershipCheck.success) {
-      return NextResponse.json(
-        { error: membershipCheck.error!.message },
-        { status: membershipCheck.error!.status }
-      );
-    }
-
-    // Get authenticated client
-    const authenticatedClient = await getAuthenticatedForumClient();
-
     // Get all posts in the school thread
-    const posts = await authenticatedClient.getPostsByThread(schoolId);
+    const posts = await forumClient.getPostsByThread(schoolId);
 
     // Filter for subject posts
     const subjectPosts = posts.filter(post => 
@@ -59,16 +44,9 @@ export async function POST(
   try {
     const { schoolId } = await params;
     const body = await request.json();
-    const { name, description, color } = body;
+    const { name, description, color, userId } = body;
 
-    // Check permissions - only teachers and admins can create subjects
-    const permissionCheck = await checkPermission(schoolId, 'create_subject');
-    if (!permissionCheck.success) {
-      return NextResponse.json(
-        { error: permissionCheck.error!.message },
-        { status: permissionCheck.error!.status }
-      );
-    }
+    console.log('Creating subject:', { schoolId, name, color, userId });
 
     // Validate input
     if (!name || name.trim().length < 1) {
@@ -78,30 +56,37 @@ export async function POST(
       );
     }
 
-    if (!color || !color.match(/^#[0-9A-Fa-f]{6}$/)) {
+    if (!userId) {
       return NextResponse.json(
-        { error: 'Valid color hex code is required' },
+        { error: 'User ID is required' },
         { status: 400 }
       );
     }
 
-    // Get authenticated client
-    const authenticatedClient = await getAuthenticatedForumClient();
+    // Default color if not provided
+    const subjectColor = color && color.match(/^#[0-9A-Fa-f]{6}$/) ? color : '#7EC8E3';
 
     // Create subject post in Foru.ms with proper extendedData structure
-    const post = await authenticatedClient.createPost({
+    const postData = {
       threadId: schoolId,
-      content: description || '',
-      tags: ['subject'],
+      body: name.trim(), // Use name as body since description might be empty
+      userId: userId,
       extendedData: {
         type: 'subject',
         name: name.trim(),
         description: description?.trim() || '',
-        color: color,
-        createdBy: permissionCheck.userId,
+        color: subjectColor,
+        colorTag: subjectColor,
+        createdBy: userId,
         schoolId: schoolId
       }
-    });
+    };
+    
+    console.log('Post data:', JSON.stringify(postData, null, 2));
+    
+    const post = await forumClient.createPost(postData);
+
+    console.log('Subject created:', post);
 
     return NextResponse.json({
       subjectId: post.id,
@@ -110,7 +95,7 @@ export async function POST(
   } catch (error) {
     console.error('Create subject error:', error);
     return NextResponse.json(
-      { error: 'Failed to create subject' },
+      { error: error instanceof Error ? error.message : 'Failed to create subject' },
       { status: 500 }
     );
   }

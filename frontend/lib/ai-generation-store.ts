@@ -27,7 +27,7 @@ interface AIGenerationStore {
 }
 
 // Minimum contribution threshold
-const MIN_CONTRIBUTIONS = 5
+const MIN_CONTRIBUTIONS = 2
 
 // Cooldown periods in milliseconds
 const STUDENT_COOLDOWN = 2 * 60 * 60 * 1000 // 2 hours

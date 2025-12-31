@@ -71,9 +71,32 @@ export function NotesPageContent({
     setTimeout(() => setToast({ message: "", visible: false }), 3000)
   }
 
-  const handleRegenerate = () => {
+  const handleRegenerate = async () => {
     setRegenerateModalOpen(false)
-    showToast("Regenerating notes... (demo)")
+    showToast("Generating notes...")
+    
+    try {
+      const response = await fetch(`/api/forum/chapters/${chapterId}/generate-notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: 'current-user', // This would come from auth
+          userRole: 'student',
+        }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        showToast("Notes generated successfully!")
+        // Reload the page to show new notes
+        window.location.reload()
+      } else {
+        const error = await response.json()
+        showToast(error.error || "Failed to generate notes")
+      }
+    } catch (err) {
+      showToast("Failed to generate notes")
+    }
   }
 
   const handleExport = () => {

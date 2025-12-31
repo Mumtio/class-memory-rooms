@@ -5,65 +5,95 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { forumClient } from '@/lib/forum/client';
-import { mapThreadToChapter } from '@/lib/forum/mappers';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { db } from '@/lib/database';
 
 // GET /api/forum/chapters/[chapterId] - Get chapter details
 export async function GET(
   request: NextRequest,
-  { params }: { params: { chapterId: string } }
+  { params }: { params: Promise<{ chapterId: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { chapterId } = await params;
 
-    const { chapterId } = params;
-
-    // 2. Fetch chapter thread from Foru.ms
+    // Fetch chapter thread from Foru.ms
     const thread = await forumClient.getThread(chapterId);
     
-    if (!thread.tags.includes('chapter')) {
+    if (!thread || thread.extendedData?.type !== 'chapter') {
       return NextResponse.json(
-        { error: 'Thread is not a chapter' },
-        { status: 400 }
+        { error: 'Chapter not found' },
+        { status: 404 }
       );
     }
 
-    // 3. Check if user has access to this chapter's school
-    const schoolId = thread.metadata?.schoolId;
-    if (schoolId) {
-      const membership = await db.getSchoolMembership(session.user.id, schoolId);
-      if (!membership) {
-        return NextResponse.json(
-          { error: 'Access denied' },
-          { status: 403 }
-        );
+    // Get posts in the chapter thread
+    const posts = await forumClient.getPostsByThread(chapterId);
+    
+    // Count contributions
+    const contributionCount = posts.filter(p => 
+      p.extendedData?.type === 'contribution'
+    ).length;
+    
+    // Check if AI notes exist
+    const aiNotePosts = posts.filter(p => 
+      p.extendedData?.type === 'unified_notes' || p.extendedData?.type === 'ai_notes'
+    );
+    const hasAiNotes = aiNotePosts.length > 0;
+    const latestAiNote = aiNotePosts
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+    // Get course info if courseId exists
+    let course = null;
+    let subject = null;
+    const courseId = thread.extendedData?.courseId;
+    
+    if (courseId) {
+      try {
+        const coursePost = await forumClient.getPost(courseId);
+        if (coursePost && coursePost.extendedData?.type === 'course') {
+          course = {
+            id: coursePost.id,
+            code: coursePost.extendedData?.code || 'COURSE',
+            title: coursePost.extendedData?.title || coursePost.body,
+            teacher: coursePost.extendedData?.teacher || 'TBD',
+          };
+          
+          // Get subject info
+          const subjectId = coursePost.extendedData?.subjectId;
+          if (subjectId) {
+            try {
+              const subjectPost = await forumClient.getPost(subjectId);
+              if (subjectPost && subjectPost.extendedData?.type === 'subject') {
+                subject = {
+                  id: subjectPost.id,
+                  name: subjectPost.extendedData?.name || 'Subject',
+                  colorTag: subjectPost.extendedData?.colorTag || subjectPost.extendedData?.color || '#7EC8E3',
+                };
+              }
+            } catch (e) {
+              console.error('Error fetching subject:', e);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching course:', e);
       }
     }
 
-    // 4. Map to frontend format
-    const chapter = mapThreadToChapter(thread);
-
-    // 5. Get contribution count
-    const posts = await forumClient.getPostsByThread(chapterId);
-    const contributionCount = posts.filter(p => p.tags.includes('contribution')).length;
-    
-    // 6. Check if AI notes exist
-    const hasAiNotes = posts.some(p => p.tags.includes('unified_notes'));
-    const latestAiNote = posts
-      .filter(p => p.tags.includes('unified_notes'))
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-
     return NextResponse.json({
-      ...chapter,
-      contributionCount,
+      chapter: {
+        id: thread.id,
+        title: thread.extendedData?.title || thread.title,
+        label: thread.extendedData?.label || 'Lecture',
+        courseId: thread.extendedData?.courseId,
+        schoolId: thread.extendedData?.schoolId,
+        status: thread.extendedData?.status || 'Collecting',
+        contributions: contributionCount,
+        resources: 0,
+        photos: 0,
+        course,
+        subject,
+      },
       hasAiNotes,
-      latestAiNoteVersion: latestAiNote?.metadata?.version || undefined,
+      latestAiNoteVersion: latestAiNote?.extendedData?.version || undefined,
     });
   } catch (error) {
     console.error('Get chapter error:', error);
@@ -72,9 +102,4 @@ export async function GET(
       { status: 500 }
     );
   }
-}
-
-// Helper function (implement with your database)
-async function getSchoolMembership(userId: string, schoolId: string): Promise<any> {
-  return await db.getSchoolMembership(userId, schoolId);
 }

@@ -4,9 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions, getAuthenticatedForumClient } from '@/lib/auth';
-import { db } from '@/lib/database';
+import { forumClient, generateSlug } from '@/lib/forum/client';
 import { mapThreadsToChapters } from '@/lib/forum/mappers';
 
 // GET /api/forum/courses/[courseId]/chapters - Get all chapters in a course
@@ -15,20 +13,22 @@ export async function GET(
   { params }: { params: Promise<{ courseId: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { courseId } = await params;
+    console.log('Fetching chapters for course:', courseId);
+
+    // Get course post to verify it exists
+    let coursePost;
+    try {
+      coursePost = await forumClient.getPost(courseId);
+      console.log('Course post found:', coursePost?.id, coursePost?.extendedData?.type);
+    } catch (error) {
+      console.error('Error fetching course post:', error);
+      return NextResponse.json(
+        { error: 'Course not found' },
+        { status: 404 }
+      );
     }
 
-    const { courseId } = await params;
-    const userId = session.user.id;
-
-    // 2. Get authenticated client
-    const authenticatedClient = await getAuthenticatedForumClient();
-
-    // 3. Get course post to verify it exists and get school info
-    const coursePost = await authenticatedClient.getPost(courseId);
     if (!coursePost || coursePost.extendedData?.type !== 'course') {
       return NextResponse.json(
         { error: 'Course not found' },
@@ -36,35 +36,29 @@ export async function GET(
       );
     }
 
-    const schoolId = coursePost.extendedData?.schoolId;
-    if (!schoolId) {
-      return NextResponse.json(
-        { error: 'Invalid course data' },
-        { status: 400 }
-      );
+    // Get all threads with chapter type that belong to this course
+    let allThreads: any[] = [];
+    try {
+      allThreads = await forumClient.getThreadsByType('chapter');
+      console.log('Found chapter threads:', allThreads.length);
+    } catch (error) {
+      console.error('Error fetching chapter threads:', error);
+      // Return empty array if we can't fetch threads
+      return NextResponse.json({ chapters: [] });
     }
 
-    // 4. Check if user has access to this school
-    const membership = await db.getSchoolMembership(userId, schoolId);
-    if (!membership) {
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
-      );
-    }
-
-    // 5. Get all threads with chapter type that belong to this course
-    const allThreads = await authenticatedClient.getThreadsByType('chapter');
     const chapterThreads = allThreads.filter(thread => 
       thread.extendedData?.courseId === courseId
     );
+    console.log('Filtered chapters for this course:', chapterThreads.length);
 
-    // 6. Map to frontend format
+    // Map to frontend format
     const chapters = mapThreadsToChapters(chapterThreads);
 
     return NextResponse.json({ chapters });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get chapters error:', error);
+    console.error('Error details:', error?.message, error?.status);
     return NextResponse.json(
       { error: 'Failed to fetch chapters' },
       { status: 500 }
@@ -78,18 +72,13 @@ export async function POST(
   { params }: { params: Promise<{ courseId: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { courseId } = await params;
-    const userId = session.user.id;
     const body = await request.json();
-    const { title, description, label } = body;
+    const { title, description, label, userId } = body;
 
-    // 2. Validate input
+    console.log('Creating chapter with data:', { courseId, title, label, userId });
+
+    // Validate input
     if (!title || title.trim().length < 1) {
       return NextResponse.json(
         { error: 'Chapter title is required' },
@@ -97,11 +86,26 @@ export async function POST(
       );
     }
 
-    // 3. Get authenticated client
-    const authenticatedClient = await getAuthenticatedForumClient();
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
 
-    // 4. Get course post to verify it exists and get school info
-    const coursePost = await authenticatedClient.getPost(courseId);
+    // Get course post to verify it exists and get school info
+    let coursePost;
+    try {
+      coursePost = await forumClient.getPost(courseId);
+      console.log('Course post found:', coursePost?.id, coursePost?.extendedData?.type);
+    } catch (error) {
+      console.error('Error fetching course post:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch course' },
+        { status: 500 }
+      );
+    }
+
     if (!coursePost || coursePost.extendedData?.type !== 'course') {
       return NextResponse.json(
         { error: 'Course not found' },
@@ -110,48 +114,46 @@ export async function POST(
     }
 
     const schoolId = coursePost.extendedData?.schoolId;
-    if (!schoolId) {
-      return NextResponse.json(
-        { error: 'Invalid course data' },
-        { status: 400 }
-      );
-    }
+    console.log('School ID from course:', schoolId);
 
-    // 5. Check permissions - only teachers and admins can create chapters
-    const membership = await db.getSchoolMembership(userId, schoolId);
-    if (!membership || membership.role === 'student') {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
-    }
+    // Generate a unique slug for the chapter
+    const timestamp = Date.now();
+    const slug = generateSlug(`${title.trim()}-${timestamp}`);
 
-    // 6. Create chapter thread in Foru.ms with proper extendedData structure
-    const thread = await authenticatedClient.createThread({
+    // Create chapter thread in Foru.ms with proper structure matching API spec
+    const threadData = {
       title: title.trim(),
-      content: description?.trim() || '',
+      slug: slug,
+      body: description?.trim() || `Chapter: ${title.trim()}`,
+      userId: userId,
+      locked: false,
+      pinned: false,
       tags: ['chapter'],
       extendedData: {
         type: 'chapter',
         courseId: courseId,
         schoolId: schoolId,
         status: 'Collecting',
-        label: label?.trim(),
+        label: label?.trim() || 'Lecture',
         createdBy: userId
       }
-    });
+    };
+    
+    console.log('Creating thread with data:', JSON.stringify(threadData, null, 2));
 
-    // 7. Add creator as thread participant
-    await authenticatedClient.addThreadParticipant(thread.id, userId);
+    const thread = await forumClient.createThread(threadData);
+
+    console.log('Chapter thread created:', thread.id);
 
     return NextResponse.json({
       chapterId: thread.id,
       message: 'Chapter created successfully'
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create chapter error:', error);
+    console.error('Error details:', error?.message, error?.status, error?.errorData);
     return NextResponse.json(
-      { error: 'Failed to create chapter' },
+      { error: error?.message || 'Failed to create chapter' },
       { status: 500 }
     );
   }

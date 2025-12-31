@@ -8,7 +8,6 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
 import { db } from './database';
 import { can, type PermissionAction } from './permissions';
-import { isDemoSchool } from './demo-school';
 
 export interface PermissionCheckResult {
   success: boolean;
@@ -74,31 +73,6 @@ export async function checkPermission(
           message: `Insufficient permissions - ${membership.role} role cannot perform ${action}`
         }
       };
-    }
-
-    // 4. Additional demo school restrictions
-    if (isDemoSchool(schoolId)) {
-      const adminActions: PermissionAction[] = [
-        'open_admin_dashboard',
-        'create_subject',
-        'create_course',
-        'manage_members',
-        'change_ai_settings',
-        'regenerate_join_key',
-        'promote_members',
-        'remove_members',
-        'delete_school'
-      ];
-
-      if (adminActions.includes(action)) {
-        return {
-          success: false,
-          error: {
-            status: 403,
-            message: 'Admin actions are not allowed in the demo school'
-          }
-        };
-      }
     }
 
     return {
@@ -274,26 +248,7 @@ export async function checkMultiplePermissions(
     };
 
     if (can(membershipForCheck, action)) {
-      // Additional demo school check
-      if (isDemoSchool(schoolId)) {
-        const adminActions: PermissionAction[] = [
-          'open_admin_dashboard',
-          'create_subject',
-          'create_course',
-          'manage_members',
-          'change_ai_settings',
-          'regenerate_join_key',
-          'promote_members',
-          'remove_members',
-          'delete_school'
-        ];
-
-        if (!adminActions.includes(action)) {
-          allowedActions.push(action);
-        }
-      } else {
-        allowedActions.push(action);
-      }
+      allowedActions.push(action);
     }
   }
 

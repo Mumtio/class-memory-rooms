@@ -8,7 +8,6 @@ import { useAuth } from "@/lib/auth-store"
 import { can } from "@/lib/permissions"
 import { SchoolSwitcher } from "@/components/school-switcher"
 import { LogOut, User, Shield } from "lucide-react"
-import { isDemoSchool } from "@/lib/demo-school"
 import { useActiveSchool } from "@/lib/active-school-context"
 
 export function Navbar() {
@@ -47,7 +46,7 @@ export function Navbar() {
     )
   }
 
-  const isAdmin = can(activeMembership, "open_admin_dashboard") && !isDemoSchool(activeMembership?.schoolId)
+  const isAdmin = can(activeMembership, "open_admin_dashboard")
 
   // Don't render auth-dependent UI until hydrated to prevent hydration mismatch
   if (!isHydrated) {

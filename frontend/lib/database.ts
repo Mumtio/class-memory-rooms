@@ -368,10 +368,6 @@ export async function updateAISettings(
 }
 
 // Utility Functions
-export function isDemoSchool(schoolId: string): boolean {
-  return schoolId === 'demo';
-}
-
 export function isValidRole(role: string): role is 'student' | 'teacher' | 'admin' {
   return ['student', 'teacher', 'admin'].includes(role);
 }
@@ -401,7 +397,6 @@ export const db = {
   updateAISettings,
   
   // Utilities
-  isDemoSchool,
   isValidRole,
   initializeDatabase,
 };

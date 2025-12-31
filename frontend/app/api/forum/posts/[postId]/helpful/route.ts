@@ -5,88 +5,82 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { forumClient } from '@/lib/forum/client';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 
-// POST /api/forum/posts/[postId]/helpful - Mark post as helpful
+// POST /api/forum/posts/[postId]/helpful - Mark post as helpful (like)
 export async function POST(
   request: NextRequest,
-  { params }: { params: { postId: string } }
+  { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { postId } = await params;
+    const body = await request.json();
+    const { userId } = body;
+
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    const userId = session.user.id;
-    const { postId } = params;
+    // Like the post in Foru.ms
+    await forumClient.likePost(postId, userId);
 
-    // 2. Verify post exists
-    const post = await forumClient.getPost(postId);
-    
-    // 3. Check if user has access to this post's thread
-    const thread = await forumClient.getThread(post.threadId);
-    
-    // TODO: Verify user is member of the school that owns this chapter
-    
-    // 4. Mark post as helpful in Foru.ms
-    await forumClient.markPostHelpful(postId, userId);
-
-    // 5. Get updated post to return new helpful count
-    const updatedPost = await forumClient.getPost(postId);
+    // Get updated like count
+    let helpfulCount = 0;
+    try {
+      const likesData = await forumClient.getPostLikes(postId);
+      helpfulCount = likesData.count || likesData.likes?.length || 0;
+    } catch (e) {
+      // If we can't get likes, just return 1 (we know we just liked it)
+      helpfulCount = 1;
+    }
 
     return NextResponse.json({
-      helpfulCount: updatedPost.helpfulCount,
-      message: 'Post marked as helpful',
+      helpfulCount,
+      message: 'Post liked successfully',
     });
   } catch (error) {
-    console.error('Mark helpful error:', error);
+    console.error('Like post error:', error);
     return NextResponse.json(
-      { error: 'Failed to mark post as helpful' },
+      { error: 'Failed to like post' },
       { status: 500 }
     );
   }
 }
 
-// DELETE /api/forum/posts/[postId]/helpful - Remove helpful mark
+// DELETE /api/forum/posts/[postId]/helpful - Remove like
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { postId: string } }
+  { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { postId } = await params;
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    const userId = session.user.id;
-    const { postId } = params;
+    // Unlike the post in Foru.ms
+    await forumClient.unlikePost(postId, userId);
 
-    // 2. Verify post exists
-    const post = await forumClient.getPost(postId);
-    
-    // 3. Check if user has access to this post's thread
-    const thread = await forumClient.getThread(post.threadId);
-    
-    // TODO: Verify user is member of the school that owns this chapter
-    
-    // 4. Remove helpful mark in Foru.ms
-    await forumClient.unmarkPostHelpful(postId, userId);
-
-    // 5. Get updated post to return new helpful count
-    const updatedPost = await forumClient.getPost(postId);
+    // Get updated like count
+    let helpfulCount = 0;
+    try {
+      const likesData = await forumClient.getPostLikes(postId);
+      helpfulCount = likesData.count || likesData.likes?.length || 0;
+    } catch (e) {
+      // If we can't get likes, just return 0
+      helpfulCount = 0;
+    }
 
     return NextResponse.json({
-      helpfulCount: updatedPost.helpfulCount,
-      message: 'Helpful mark removed',
+      helpfulCount,
+      message: 'Like removed successfully',
     });
   } catch (error) {
-    console.error('Remove helpful error:', error);
+    console.error('Unlike post error:', error);
     return NextResponse.json(
-      { error: 'Failed to remove helpful mark' },
+      { error: 'Failed to remove like' },
       { status: 500 }
     );
   }

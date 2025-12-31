@@ -5,7 +5,6 @@ export interface School {
   name: string
   description?: string
   joinKey?: string
-  isDemo?: boolean
 }
 
 export interface Subject {

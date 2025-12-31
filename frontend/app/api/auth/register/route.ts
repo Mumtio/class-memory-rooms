@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.FORUMMS_API_KEY || '',
+        'X-API-Key': process.env.FORUMMS_API_KEY || '',
       },
       body: JSON.stringify({ 
         username: login,  // Foru.ms uses 'username' for registration

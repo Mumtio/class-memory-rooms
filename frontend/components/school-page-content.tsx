@@ -10,7 +10,6 @@ import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useActiveSchool } from "@/lib/active-school-context"
 import { can } from "@/lib/permissions"
-import { isDemoSchool } from "@/lib/demo-school"
 
 interface SchoolPageContentProps {
   schoolId: string
@@ -31,7 +30,7 @@ function SearchBar() {
 export function SchoolPageContent({ schoolId }: SchoolPageContentProps) {
   const { activeMembership } = useActiveSchool()
   const isAdmin = can(activeMembership, "open_admin_dashboard")
-  const showAdminDashboard = isAdmin && !isDemoSchool(schoolId)
+  const showAdminDashboard = isAdmin
   
   const [schoolName, setSchoolName] = useState("School")
   const [subjects, setSubjects] = useState<Subject[]>([])
@@ -105,8 +104,14 @@ export function SchoolPageContent({ schoolId }: SchoolPageContentProps) {
       {/* Subject Grid */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
-          <div className="col-span-full text-center py-12">
-            <p className="text-muted">Loading subjects...</p>
+          <div className="col-span-full flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="relative mx-auto w-12 h-12 mb-4">
+                <div className="absolute inset-0 rounded-full border-4 border-primary/20"></div>
+                <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+              </div>
+              <p className="text-muted">Loading subjects...</p>
+            </div>
           </div>
         ) : subjects.length > 0 ? (
           subjects.map((subject) => (

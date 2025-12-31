@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedForumClient } from '@/lib/auth';
+import { forumClient } from '@/lib/forum/client';
 
 // GET /api/forum/courses/[courseId] - Get course details
 export async function GET(
@@ -14,11 +14,8 @@ export async function GET(
   try {
     const { courseId } = await params;
 
-    // Get authenticated client
-    const authenticatedClient = await getAuthenticatedForumClient();
-
     // Get course post
-    const coursePost = await authenticatedClient.getPost(courseId);
+    const coursePost = await forumClient.getPost(courseId);
     
     if (!coursePost || coursePost.extendedData?.type !== 'course') {
       return NextResponse.json(
@@ -34,7 +31,7 @@ export async function GET(
     
     if (subjectId) {
       try {
-        const subjectPost = await authenticatedClient.getPost(subjectId);
+        const subjectPost = await forumClient.getPost(subjectId);
         if (subjectPost && subjectPost.extendedData?.type === 'subject') {
           subject = {
             id: subjectPost.id,
@@ -45,7 +42,7 @@ export async function GET(
           // Try to get school name from the thread
           const schoolId = subjectPost.threadId;
           if (schoolId) {
-            const schoolThread = await authenticatedClient.getThread(schoolId);
+            const schoolThread = await forumClient.getThread(schoolId);
             if (schoolThread) {
               schoolName = schoolThread.extendedData?.name || schoolThread.title || 'School';
             }

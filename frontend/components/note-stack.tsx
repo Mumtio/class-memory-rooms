@@ -1,9 +1,11 @@
 "use client"
 
 import type { NoteStackItem } from "@/types/models"
-import { FileText, Sparkles } from "lucide-react"
+import { FileText, Sparkles, Loader2 } from "lucide-react"
 import { Button } from "./ui/button"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useTransition } from "react"
 
 interface NoteStackProps {
   items: NoteStackItem[]
@@ -13,6 +15,9 @@ interface NoteStackProps {
     resources: number
     photos: number
   }
+  hasNotes?: boolean
+  onGenerateNotes?: () => void
+  isGenerating?: boolean
 }
 
 const MARKER_COLORS: Record<string, string> = {
@@ -24,7 +29,10 @@ const MARKER_COLORS: Record<string, string> = {
   "✨": "bg-yellow-100 text-yellow-900",
 }
 
-export function NoteStack({ items, chapterId, stats }: NoteStackProps) {
+export function NoteStack({ items, chapterId, stats, hasNotes = true, onGenerateNotes, isGenerating }: NoteStackProps) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  
   const scrollToContribution = (contributionId?: string) => {
     if (!contributionId) return
     const element = document.getElementById(`contribution-${contributionId}`)
@@ -112,12 +120,35 @@ export function NoteStack({ items, chapterId, stats }: NoteStackProps) {
       </div>
 
       {/* Open Notes button */}
-      <Button asChild className="w-full" size="sm">
-        <Link href={`/chapter/${chapterId}/notes`}>
-          <Sparkles className="h-4 w-4 mr-2" />
-          Open Unified Notes
-        </Link>
-      </Button>
+      {hasNotes ? (
+        <Button 
+          className="w-full" 
+          size="sm"
+          disabled={isPending}
+          onClick={() => startTransition(() => router.push(`/chapter/${chapterId}/notes`))}
+        >
+          {isPending ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4 mr-2" />
+          )}
+          {isPending ? "Loading..." : "Open Unified Notes"}
+        </Button>
+      ) : (
+        <Button 
+          className="w-full" 
+          size="sm"
+          disabled={isGenerating}
+          onClick={onGenerateNotes}
+        >
+          {isGenerating ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4 mr-2" />
+          )}
+          {isGenerating ? "Generating..." : "Generate Notes"}
+        </Button>
+      )}
     </div>
   )
 }

@@ -1,6 +1,5 @@
 import type { UserRole } from "@/lib/auth-store"
 import type { Membership } from "@/lib/active-school-context"
-import { isDemoSchool } from "@/lib/demo-school"
 
 // Permission action types
 export type PermissionAction =
@@ -41,22 +40,6 @@ const PERMISSION_MATRIX: Record<UserRole, PermissionAction[]> = {
  */
 export function can(membership: Membership | null, action: PermissionAction): boolean {
   if (!membership) return false
-
-  const adminActions: PermissionAction[] = [
-    "open_admin_dashboard",
-    "create_subject",
-    "create_course",
-    "manage_members",
-    "change_ai_settings",
-    "regenerate_join_key",
-    "promote_members",
-    "remove_members",
-    "delete_school",
-  ]
-
-  if (isDemoSchool(membership.schoolId) && adminActions.includes(action)) {
-    return false
-  }
 
   return PERMISSION_MATRIX[membership.role]?.includes(action) ?? false
 }

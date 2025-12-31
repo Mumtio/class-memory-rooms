@@ -6,38 +6,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { forumClient } from '@/lib/forum/client';
 import { mapPostToAiNote } from '@/lib/forum/mappers';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 
 // GET /api/forum/chapters/[chapterId]/notes - Get latest unified notes
 export async function GET(
   request: NextRequest,
-  { params }: { params: { chapterId: string } }
+  { params }: { params: Promise<{ chapterId: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { chapterId } = await params;
 
-    const { chapterId } = params;
-
-    // 2. Verify chapter exists and user has access
+    // Verify chapter exists
     const chapter = await forumClient.getThread(chapterId);
-    if (!chapter.extendedData?.type === 'chapter') {
+    if (!chapter || chapter.extendedData?.type !== 'chapter') {
       return NextResponse.json(
         { error: 'Chapter not found' },
         { status: 404 }
       );
     }
 
-    // 3. Get all posts in chapter thread
+    // Get all posts in chapter thread
     const posts = await forumClient.getPostsByThread(chapterId);
     
-    // 4. Filter for unified_notes posts and get latest by version
+    // Filter for unified_notes posts and get latest by version
     const notesPosts = posts
-      .filter(p => p.extendedData?.type === 'unified_notes')
+      .filter(p => p.extendedData?.type === 'unified_notes' || p.extendedData?.type === 'ai_notes')
       .sort((a, b) => {
         const versionA = a.extendedData?.version || 0;
         const versionB = b.extendedData?.version || 0;
@@ -45,13 +37,11 @@ export async function GET(
       });
 
     if (notesPosts.length === 0) {
-      return NextResponse.json(
-        { error: 'No unified notes found' },
-        { status: 404 }
-      );
+      // Return null notes instead of 404 - no notes generated yet is a valid state
+      return NextResponse.json({ notes: null });
     }
 
-    // 5. Map latest notes to frontend format
+    // Map latest notes to frontend format
     const latestNotes = mapPostToAiNote(notesPosts[0]);
 
     return NextResponse.json({ notes: latestNotes });

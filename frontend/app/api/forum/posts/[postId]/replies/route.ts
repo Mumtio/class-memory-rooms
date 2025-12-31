@@ -5,27 +5,18 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { forumClient } from '@/lib/forum/client';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 
 // POST /api/forum/posts/[postId]/replies - Create reply to post
 export async function POST(
   request: NextRequest,
-  { params }: { params: { postId: string } }
+  { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userId = session.user.id;
-    const { postId } = params;
+    const { postId } = await params;
     const body = await request.json();
-    const { content } = body;
+    const { content, userId, authorName, anonymous = false } = body;
 
-    // 2. Validate input
+    // Validate input
     if (!content || content.trim().length < 1) {
       return NextResponse.json(
         { error: 'Reply content is required' },
@@ -33,20 +24,29 @@ export async function POST(
       );
     }
 
-    // 3. Get parent post to verify it exists and get thread context
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get parent post to verify it exists and get thread context
     const parentPost = await forumClient.getPost(postId);
     
-    // 4. Verify user has access to the thread
-    const thread = await forumClient.getThread(parentPost.threadId);
-    
-    // TODO: Check if user is member of the school that owns this chapter
-    
-    // 5. Create reply post in Foru.ms
+    // Create reply post in Foru.ms
+    // Store authorName in extendedData so we don't rely on Foru.ms user lookup
     const reply = await forumClient.createPost({
       threadId: parentPost.threadId,
-      content,
-      tags: ['reply'],
-      parentPostId: postId,
+      body: content,
+      userId: userId,
+      parentId: postId,
+      extendedData: {
+        type: 'reply',
+        parentPostId: postId,
+        anonymous: anonymous,
+        authorName: authorName || 'Unknown User',
+      }
     });
 
     return NextResponse.json({
@@ -65,49 +65,65 @@ export async function POST(
 // GET /api/forum/posts/[postId]/replies - Get all replies to a post
 export async function GET(
   request: NextRequest,
-  { params }: { params: { postId: string } }
+  { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { postId } = await params;
 
-    const { postId } = params;
-
-    // 2. Get parent post
+    // Get parent post
     const parentPost = await forumClient.getPost(postId);
     
-    // 3. Get all posts in the thread
+    // Get all posts in the thread
     const allPosts = await forumClient.getPostsByThread(parentPost.threadId);
     
-    // 4. Filter for replies to this specific post
+    // Filter for replies to this specific post
     const replies = allPosts.filter(post => 
-      post.parentPostId === postId && post.tags.includes('reply')
+      post.parentId === postId || post.extendedData?.parentPostId === postId
     );
 
-    // 5. Get author information for replies
-    const authorIds = [...new Set(replies.map(r => r.userId))];
+    // Build authors map - prioritize extendedData.authorName to avoid slow API calls
     const authors: Record<string, any> = {};
+    const userIdsToFetch: string[] = [];
     
-    for (const authorId of authorIds) {
-      try {
-        const user = await forumClient.getUser(authorId);
-        authors[authorId] = user;
-      } catch (error) {
-        authors[authorId] = {
-          id: authorId,
-          name: 'Unknown User',
+    for (const reply of replies) {
+      if (reply.extendedData?.authorName) {
+        authors[reply.userId] = {
+          id: reply.userId,
+          name: reply.extendedData.authorName,
           avatarUrl: undefined,
         };
+      } else if (!authors[reply.userId] && !userIdsToFetch.includes(reply.userId)) {
+        userIdsToFetch.push(reply.userId);
       }
     }
+    
+    // Batch fetch remaining users in parallel (for legacy replies without authorName)
+    if (userIdsToFetch.length > 0) {
+      const userResults = await Promise.all(
+        userIdsToFetch.map(async (userId) => {
+          try {
+            return await forumClient.getUser(userId);
+          } catch {
+            return { id: userId, name: 'Unknown User', avatarUrl: undefined };
+          }
+        })
+      );
+      
+      userResults.forEach((user) => {
+        authors[user.id] = user;
+      });
+    }
 
-    // 6. Map replies with author information
+    // Map replies with author information
+    // Prioritize extendedData.authorName over Foru.ms user lookup
     const repliesWithAuthors = replies.map(reply => ({
-      ...reply,
-      author: authors[reply.userId],
+      id: reply.id,
+      content: reply.body,
+      author: reply.extendedData?.authorName || authors[reply.userId]?.name || 'Unknown User',
+      createdAt: reply.createdAt,
+      anonymous: reply.extendedData?.anonymous || false,
+      helpfulCount: reply.helpfulCount || 0,
+      parentId: reply.parentId,
     }));
 
     return NextResponse.json({

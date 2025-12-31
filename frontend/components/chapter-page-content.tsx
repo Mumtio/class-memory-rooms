@@ -15,9 +15,10 @@ import type {
   NoteStackItem,
   UnifiedNotes,
 } from "@/types/models"
-import { Bookmark, Share2, Sparkles, Filter } from "lucide-react"
-import { useState, useEffect } from "react"
+import { Bookmark, Share2, Sparkles, Filter, Loader2 } from "lucide-react"
+import { useState, useEffect, useTransition } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useDemoStore } from "@/lib/demo-store"
 import { useAuth } from "@/lib/auth-store"
 import { useAIGenerationStore } from "@/lib/ai-generation-store"
@@ -44,16 +45,22 @@ export function ChapterPageContent({
   noteStackItems,
   unifiedNotes,
 }: ChapterPageContentProps) {
+  const router = useRouter()
   const { addActivity } = useDemoStore()
   const { user } = useAuth()
   const { activeMembership } = useActiveSchool()
   const { canGenerate, recordGeneration, getLastGeneration } = useAIGenerationStore()
+  const [isPending, startTransition] = useTransition()
 
   const [activeTab, setActiveTab] = useState<TabType>("contributions")
   const [contributions, setContributions] = useState<Contribution[]>(initialContributions)
   const [composerOpen, setComposerOpen] = useState(false)
   const [resourceFilter, setResourceFilter] = useState<string>("all")
   const [shareToast, setShareToast] = useState(false)
+  const [likedContributions, setLikedContributions] = useState<Set<string>>(new Set())
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generationError, setGenerationError] = useState<string | null>(null)
+  const [currentNotes, setCurrentNotes] = useState<UnifiedNotes | undefined>(unifiedNotes)
 
   const breadcrumbItems = [
     { label: "School", href: `/school/demo` },
@@ -62,28 +69,94 @@ export function ChapterPageContent({
     { label: chapter.label, href: `/chapter/${chapterId}` },
   ]
 
-  const handleAddContribution = (data: {
+  const handleLikeContribution = async (contributionId: string) => {
+    if (!user) return
+
+    const isLiked = likedContributions.has(contributionId)
+    
+    try {
+      if (isLiked) {
+        // Unlike
+        await fetch(`/api/forum/posts/${contributionId}/helpful?userId=${user.id}`, {
+          method: 'DELETE',
+        })
+        setLikedContributions(prev => {
+          const next = new Set(prev)
+          next.delete(contributionId)
+          return next
+        })
+        // Update local count
+        setContributions(prev => prev.map(c => 
+          c.id === contributionId ? { ...c, helpfulCount: Math.max(0, (c.helpfulCount || 0) - 1) } : c
+        ))
+      } else {
+        // Like
+        await fetch(`/api/forum/posts/${contributionId}/helpful`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id }),
+        })
+        setLikedContributions(prev => new Set(prev).add(contributionId))
+        // Update local count
+        setContributions(prev => prev.map(c => 
+          c.id === contributionId ? { ...c, helpfulCount: (c.helpfulCount || 0) + 1 } : c
+        ))
+      }
+    } catch (err) {
+      console.error("Error toggling like:", err)
+    }
+  }
+
+  const handleAddContribution = async (data: {
     type: ContributionType
     title?: string
     content?: string
     link?: { url: string; title: string }
+    image?: { url: string; alt: string }
     anonymous: boolean
   }) => {
-    const newContribution: Contribution = {
-      id: `cont-new-${crypto.randomUUID()}`,
-      chapterId,
-      type: data.type,
-      title: data.title,
-      content: data.content,
-      link: data.link,
-      anonymous: data.anonymous,
-      authorName: data.anonymous ? "Anonymous Student" : "You",
-      createdAt: "Just now",
-      helpfulCount: 0,
-      replies: [],
-    }
+    // Create contribution via API
+    try {
+      const response = await fetch(`/api/forum/chapters/${chapterId}/contributions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: data.type,
+          title: data.title,
+          content: data.content || '',
+          imageUrl: data.image?.url,
+          links: data.link ? [data.link.url] : [],
+          anonymous: data.anonymous,
+          userId: user?.id,
+          authorName: user?.name,
+        }),
+      })
 
-    setContributions([newContribution, ...contributions])
+      if (!response.ok) {
+        console.error('Failed to create contribution')
+        return
+      }
+
+      // Add to local state for immediate feedback
+      const newContribution: Contribution = {
+        id: `cont-new-${crypto.randomUUID()}`,
+        chapterId,
+        type: data.type,
+        title: data.title,
+        content: data.content,
+        link: data.link,
+        image: data.image,
+        anonymous: data.anonymous,
+        authorName: data.anonymous ? "Anonymous Student" : (user?.name || "You"),
+        createdAt: "Just now",
+        helpfulCount: 0,
+        replies: [],
+      }
+
+      setContributions([newContribution, ...contributions])
+    } catch (error) {
+      console.error('Error creating contribution:', error)
+    }
   }
 
   const resourceContributions = contributions.filter(
@@ -104,10 +177,46 @@ export function ChapterPageContent({
     ? canGenerate(chapterId, activeMembership.role, contributionCount)
     : { allowed: false, reason: "Sign in to generate notes" }
 
-  const handleGenerateNotes = () => {
-    if (user && activeMembership && generationState.allowed) {
-      recordGeneration(chapterId, user.name, activeMembership.role, contributionCount)
-      window.location.href = `/chapter/${chapterId}/notes`
+  const handleGenerateNotes = async () => {
+    if (!user || !activeMembership || !generationState.allowed) return
+    
+    setIsGenerating(true)
+    setGenerationError(null)
+    setActiveTab("notes") // Switch to notes tab to show loading
+    
+    try {
+      const response = await fetch(`/api/forum/chapters/${chapterId}/generate-notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          userRole: activeMembership.role,
+        }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        recordGeneration(chapterId, user.name, activeMembership.role, contributionCount)
+        setCurrentNotes(data.notes)
+      } else {
+        const error = await response.json()
+        setGenerationError(error.error || "Failed to generate notes")
+      }
+    } catch (err) {
+      setGenerationError("Failed to generate notes. Please try again.")
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handleViewNotes = () => {
+    if (currentNotes) {
+      startTransition(() => {
+        router.push(`/chapter/${chapterId}/notes`)
+      })
+    } else {
+      // No notes exist, trigger generation
+      handleGenerateNotes()
     }
   }
 
@@ -174,12 +283,16 @@ export function ChapterPageContent({
             <Button
               variant="outline"
               size="lg"
-              disabled={!generationState.allowed}
+              disabled={!generationState.allowed || isGenerating}
               title={generationState.reason || "Generate AI study notes"}
               onClick={handleGenerateNotes}
             >
-              <Sparkles className="h-4 w-4 mr-2" />
-              {generationState.reason || "Generate Unified Notes"}
+              {isGenerating ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              {isGenerating ? "Generating..." : (generationState.reason || "Generate Unified Notes")}
             </Button>
             <Button variant="ghost" size="icon">
               <Bookmark className="h-5 w-5" />
@@ -246,7 +359,7 @@ export function ChapterPageContent({
                   <ContributionCard
                     key={contribution.id}
                     contribution={contribution}
-                    onHelpful={() => console.log("[v0] Helpful clicked")}
+                    onHelpful={() => handleLikeContribution(contribution.id)}
                     onReply={() => console.log("[v0] Reply clicked")}
                     onSave={() => console.log("[v0] Save clicked")}
                   />
@@ -257,18 +370,48 @@ export function ChapterPageContent({
 
           {activeTab === "notes" && (
             <>
-              {unifiedNotes ? (
-                <UnifiedNotesPreview chapterId={chapterId} notes={unifiedNotes} />
+              {isGenerating ? (
+                <div className="paper-card p-12 text-center">
+                  <div className="relative mx-auto w-24 h-24 mb-6">
+                    <div className="absolute inset-0 rounded-full border-4 border-primary/20"></div>
+                    <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+                    <Sparkles className="absolute inset-0 m-auto h-10 w-10 text-primary animate-pulse" />
+                  </div>
+                  <h2 className="font-serif text-2xl font-bold text-ink mb-3">Generating Unified Notes</h2>
+                  <p className="text-muted mb-2">
+                    AI is compiling {contributionCount} contributions into comprehensive study notes...
+                  </p>
+                  <p className="text-sm text-muted/70">This may take a few moments</p>
+                </div>
+              ) : generationError ? (
+                <div className="paper-card p-12 text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+                    <span className="text-2xl">⚠️</span>
+                  </div>
+                  <h2 className="font-serif text-2xl font-bold text-ink mb-3">Generation Failed</h2>
+                  <p className="text-muted mb-6">{generationError}</p>
+                  <Button onClick={handleGenerateNotes} disabled={!generationState.allowed}>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Try Again
+                  </Button>
+                </div>
+              ) : currentNotes ? (
+                <UnifiedNotesPreview chapterId={chapterId} notes={currentNotes} />
               ) : (
                 <div className="paper-card p-12 text-center">
                   <Sparkles className="h-16 w-16 text-ai-highlight mx-auto mb-4" />
                   <h2 className="font-serif text-2xl font-bold text-ink mb-3">Unified Notes Coming Soon</h2>
                   <p className="text-muted mb-6">
-                    AI will compile all contributions into a comprehensive study guide. Check back when this chapter
-                    reaches "Compiled" status!
+                    {generationState.allowed 
+                      ? "Click the button below to generate AI-compiled study notes from all contributions!"
+                      : generationState.reason || "AI will compile all contributions into a comprehensive study guide."}
                   </p>
-                  <Button asChild>
-                    <Link href={`/chapter/${chapterId}`}>Back to Contributions</Link>
+                  <Button 
+                    onClick={handleGenerateNotes} 
+                    disabled={!generationState.allowed}
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    {generationState.allowed ? "Generate Notes Now" : generationState.reason}
                   </Button>
                 </div>
               )}
@@ -316,7 +459,7 @@ export function ChapterPageContent({
                   <ContributionCard
                     key={contribution.id}
                     contribution={contribution}
-                    onHelpful={() => console.log("[v0] Helpful clicked")}
+                    onHelpful={() => handleLikeContribution(contribution.id)}
                     onReply={() => console.log("[v0] Reply clicked")}
                     onSave={() => console.log("[v0] Save clicked")}
                   />
@@ -336,12 +479,21 @@ export function ChapterPageContent({
               resources: chapter.resources,
               photos: chapter.photos,
             }}
+            hasNotes={!!currentNotes}
+            onGenerateNotes={handleGenerateNotes}
+            isGenerating={isGenerating}
           />
         </div>
       </div>
 
       {/* Contribution composer modal */}
-      <ContributionComposerModal open={composerOpen} onOpenChange={setComposerOpen} onSubmit={handleAddContribution} />
+      <ContributionComposerModal 
+        open={composerOpen} 
+        onOpenChange={setComposerOpen} 
+        chapterId={chapterId}
+        schoolId={chapter.courseId ? undefined : undefined}
+        onSubmit={handleAddContribution} 
+      />
 
       {/* Share toast notification */}
       {shareToast && (

@@ -48,8 +48,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Determine role (Demo School = student, others = student by default)
-    const role = school.isDemo ? 'student' : 'student';
+    // 5. Determine role (student by default)
+    const role = 'student';
 
     // 6. Add user to school_memberships using Foru.ms-based storage
     await db.addSchoolMembership(userId, school.id, role);
@@ -74,13 +74,8 @@ export async function POST(request: NextRequest) {
 }
 
 // Helper functions
-async function findSchoolByJoinKey(joinKey: string): Promise<{ id: string; name: string; isDemo: boolean } | null> {
+async function findSchoolByJoinKey(joinKey: string): Promise<{ id: string; name: string } | null> {
   try {
-    // Special case for demo school
-    if (joinKey === 'DEMO24') {
-      return { id: 'demo', name: 'Demo High School', isDemo: true };
-    }
-
     // Search through school threads for matching joinKey in extendedData
     const schoolThreads = await forumClient.getThreadsByType('school');
     
@@ -90,7 +85,6 @@ async function findSchoolByJoinKey(joinKey: string): Promise<{ id: string; name:
         return { 
           id: thread.id, 
           name: thread.title,
-          isDemo: extendedData.isDemo || false
         };
       }
     }

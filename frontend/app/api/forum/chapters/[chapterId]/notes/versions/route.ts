@@ -5,53 +5,45 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { forumClient } from '@/lib/forum/client';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { mapPostToAiNote } from '@/lib/forum/mappers';
 
 // GET /api/forum/chapters/[chapterId]/notes/versions - Get all note versions
 export async function GET(
   request: NextRequest,
-  { params }: { params: { chapterId: string } }
+  { params }: { params: Promise<{ chapterId: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { chapterId } = await params;
 
-    const { chapterId } = params;
-
-    // 2. Verify chapter exists and user has access
+    // Verify chapter exists
     const chapter = await forumClient.getThread(chapterId);
-    if (!chapter.extendedData?.type === 'chapter') {
+    if (!chapter || chapter.extendedData?.type !== 'chapter') {
       return NextResponse.json(
         { error: 'Chapter not found' },
         { status: 404 }
       );
     }
 
-    // 3. Get all posts in chapter thread
+    // Get all posts in chapter thread
     const posts = await forumClient.getPostsByThread(chapterId);
     
-    // 4. Filter for unified_notes posts and sort by version
+    // Filter for unified_notes posts and sort by version
     const notesPosts = posts
-      .filter(p => p.extendedData?.type === 'unified_notes')
+      .filter(p => p.extendedData?.type === 'unified_notes' || p.extendedData?.type === 'ai_notes')
       .sort((a, b) => {
         const versionA = a.extendedData?.version || 0;
         const versionB = b.extendedData?.version || 0;
         return versionB - versionA; // Latest first
       });
 
-    // 5. Map to version summary format
-    const versions = notesPosts.map(post => ({
-      id: post.id,
-      version: post.extendedData?.version || 1,
-      generatedBy: post.extendedData?.generatedBy || post.userId,
-      generatedAt: post.extendedData?.generatedAt || post.createdAt,
-      contributionCount: post.extendedData?.contributionCount || 0,
-      generatorRole: post.extendedData?.generatorRole || 'unknown',
-    }));
+    if (notesPosts.length === 0) {
+      return NextResponse.json({ versions: [] });
+    }
+
+    // Map to full UnifiedNotes format for each version
+    const versions = notesPosts
+      .map(post => mapPostToAiNote(post))
+      .filter((note): note is NonNullable<typeof note> => note !== null);
 
     return NextResponse.json({ versions });
   } catch (error) {
