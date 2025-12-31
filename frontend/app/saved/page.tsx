@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Bookmark, ExternalLink, BookOpen, LinkIcon } from "lucide-react"
 import { useDemoStore } from "@/lib/demo-store"
-import { contributionsByChapter, unifiedNotesByChapter, chapters, courses, type Contribution } from "@/lib/mock-data"
+import { contributionsByChapter, unifiedNotesByChapter, chapters, courses, type Contribution } from "@/types/models"
 import Link from "next/link"
 import { IllustrationEmptyShelf } from "@/components/illustrations/empty-shelf"
 

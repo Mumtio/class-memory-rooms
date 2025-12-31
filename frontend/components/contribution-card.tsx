@@ -1,6 +1,6 @@
 "use client"
 
-import type { Contribution } from "@/lib/mock-data"
+import type { Contribution } from "@/types/models"
 import { MessageSquare, ThumbsUp, Bookmark, ExternalLink, ImageIcon, ChevronDown } from "lucide-react"
 import { Button } from "./ui/button"
 import { useState } from "react"

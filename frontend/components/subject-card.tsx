@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, BookOpen, FileText } from "lucide-react"
-import type { Subject } from "@/lib/mock-data"
+import type { Subject } from "@/types/models"
 
 interface SubjectCardProps {
   subject: Subject

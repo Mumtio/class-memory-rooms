@@ -1,7 +1,7 @@
 import { Sparkles, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import type { UnifiedNotes } from "@/lib/mock-data"
+import type { UnifiedNotes } from "@/types/models"
 import { useAIGenerationStore } from "@/lib/ai-generation-store"
 
 interface UnifiedNotesPreviewProps {

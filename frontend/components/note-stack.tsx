@@ -1,6 +1,6 @@
 "use client"
 
-import type { NoteStackItem } from "@/lib/mock-data"
+import type { NoteStackItem } from "@/types/models"
 import { FileText, Sparkles } from "lucide-react"
 import { Button } from "./ui/button"
 import Link from "next/link"

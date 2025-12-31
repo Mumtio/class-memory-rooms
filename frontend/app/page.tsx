@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { getFeaturedChapters, getCourse, getSubjectByCourse } from "@/lib/mock-data"
+import { getFeaturedChapters, getCourse, getSubjectByCourse } from "@/types/models"
 import { ArrowRight, Users, Sparkles, BookOpen } from "lucide-react"
 import { HeroSection } from "@/components/hero-section"
 import { CTASection } from "@/components/cta-section"

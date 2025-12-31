@@ -14,7 +14,7 @@ import type {
   ContributionType,
   NoteStackItem,
   UnifiedNotes,
-} from "@/lib/mock-data"
+} from "@/types/models"
 import { Bookmark, Share2, Sparkles, Filter } from "lucide-react"
 import { useState, useEffect } from "react"
 import Link from "next/link"

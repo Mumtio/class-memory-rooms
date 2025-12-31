@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Users, BookOpen, ImageIcon } from "lucide-react"
-import type { Chapter } from "@/lib/mock-data"
+import type { Chapter } from "@/types/models"
 
 interface ChapterFolderCardProps {
   chapter: Chapter

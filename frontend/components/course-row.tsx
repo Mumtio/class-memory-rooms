@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import type { Course } from "@/lib/mock-data"
+import type { Course } from "@/types/models"
 
 interface CourseRowProps {
   course: Course

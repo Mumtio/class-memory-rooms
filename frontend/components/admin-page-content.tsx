@@ -23,7 +23,7 @@ import {
   Crown,
   GraduationCap,
 } from "lucide-react"
-import { subjects, courses, chapters } from "@/lib/mock-data"
+import { subjects, courses, chapters } from "@/types/models"
 import { useToast } from "@/hooks/use-toast"
 import { generateJoinKey } from "@/lib/workspace-store"
 import { isDemoSchool } from "@/lib/demo-school"
