@@ -1,13 +1,10 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { getFeaturedChapters, getCourse, getSubjectByCourse } from "@/types/models"
 import { ArrowRight, Users, Sparkles, BookOpen } from "lucide-react"
 import { HeroSection } from "@/components/hero-section"
 import { CTASection } from "@/components/cta-section"
 
 export default function HomePage() {
-  const featuredChapters = getFeaturedChapters(3)
-
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
@@ -69,92 +66,6 @@ export default function HomePage() {
                 Learning is better together.
               </p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Featured Chapters Section */}
-      <section className="container mx-auto px-4 py-16 md:py-20">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-12">
-            <div>
-              <h2 className="font-serif text-4xl md:text-5xl font-bold text-ink mb-3">Active chapters</h2>
-              <p className="text-muted text-lg">Join the most collaborative rooms right now</p>
-            </div>
-            <Button variant="outline" asChild className="hidden sm:flex bg-transparent">
-              <Link href="/gateway">
-                View all <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            {featuredChapters.map((chapter) => {
-              const course = getCourse(chapter.courseId)
-              const subject = course ? getSubjectByCourse(course.id) : undefined
-
-              return (
-                <div key={chapter.id} className="paper-card p-6 sketch-shadow group hover:shadow-lg transition-all">
-                  {/* Folder tab */}
-                  <div className="relative -mt-10 mb-4">
-                    <div
-                      className="inline-block px-4 py-2 rounded-t-lg border-2 border-b-0 border-border text-sm font-semibold"
-                      style={{
-                        backgroundColor: subject?.colorTag || "#D6FF3F",
-                        color: "#1E1A16",
-                      }}
-                    >
-                      {chapter.label}
-                    </div>
-                  </div>
-
-                  {/* Status stamp */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-1">
-                        {course?.code}
-                      </div>
-                      <h3 className="font-serif text-xl font-bold text-ink mb-1">{chapter.title}</h3>
-                    </div>
-                    <div className="px-2 py-1 bg-primary/20 rounded text-xs font-semibold text-ink">
-                      {chapter.status}
-                    </div>
-                  </div>
-
-                  <p className="text-sm text-muted mb-4">{course?.title}</p>
-
-                  {/* Meta info */}
-                  <div className="flex items-center gap-4 text-sm text-muted mb-4 pb-4 border-b border-border">
-                    <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      <span>{chapter.contributions}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <BookOpen className="h-4 w-4" />
-                      <span>{chapter.resources}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Sparkles className="h-4 w-4" />
-                      <span>{chapter.photos}</span>
-                    </div>
-                  </div>
-
-                  <Button className="w-full" asChild>
-                    <Link href={`/chapter/${chapter.id}`}>
-                      View Notes <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
-                </div>
-              )
-            })}
-          </div>
-
-          <div className="mt-8 text-center sm:hidden">
-            <Button variant="outline" asChild>
-              <Link href="/gateway">
-                View all <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
           </div>
         </div>
       </section>

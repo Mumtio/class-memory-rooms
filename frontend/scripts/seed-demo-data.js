@@ -13,20 +13,96 @@ const FORUMMS_API_URL = process.env.FORUMMS_API_URL || 'https://foru.ms/api/v1'
 const FORUMMS_API_KEY = process.env.FORUMMS_API_KEY
 const DEMO_SCHOOL_JOIN_KEY = 'DEMO24'
 
+// You need to provide credentials for a Foru.ms user
+const FORUMMS_USERNAME = process.env.FORUMMS_SEED_USERNAME || 'demo_admin'
+const FORUMMS_PASSWORD = process.env.FORUMMS_SEED_PASSWORD || 'demo_password_123'
+
 if (!FORUMMS_API_KEY) {
   console.error('❌ FORUMMS_API_KEY environment variable is required')
   console.error('Make sure .env.local file exists with FORUMMS_API_KEY')
   process.exit(1)
 }
 
+let authToken = null
+
+// Helper function to login and get auth token
+async function login() {
+  console.log('🔐 Logging in to Foru.ms...')
+  
+  try {
+    // Try login with 'login' field (as used in the app)
+    let response = await fetch(`${FORUMMS_API_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': FORUMMS_API_KEY,
+      },
+      body: JSON.stringify({
+        login: FORUMMS_USERNAME,
+        password: FORUMMS_PASSWORD,
+      }),
+    })
+
+    let loginError = null
+    if (!response.ok) {
+      loginError = await response.text()
+      console.log(`⚠️  Login failed (${response.status}): ${loginError}`)
+      
+      // Try to register if login fails
+      console.log('⚠️  Attempting to register new user...')
+      const registerResponse = await fetch(`${FORUMMS_API_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': FORUMMS_API_KEY,
+        },
+        body: JSON.stringify({
+          username: FORUMMS_USERNAME,
+          password: FORUMMS_PASSWORD,
+          email: `${FORUMMS_USERNAME}@example.com`,
+        }),
+      })
+
+      if (!registerResponse.ok) {
+        const errorText = await registerResponse.text()
+        // If user already exists (409), we need to use a different username or reset password
+        if (registerResponse.status === 409) {
+          console.log('⚠️  User already exists but login failed')
+          console.log('💡 Options:')
+          console.log('   1. Change FORUMMS_SEED_USERNAME in .env.local to a new username')
+          console.log('   2. Or reset the password for demo_admin in Foru.ms')
+          throw new Error(`User exists but login failed. Try a different username.`)
+        }
+        throw new Error(`Registration failed: ${registerResponse.status} - ${errorText}`)
+      }
+
+      const registerData = await registerResponse.json()
+      authToken = registerData.token
+      console.log('✅ User registered successfully')
+    } else {
+      const loginData = await response.json()
+      authToken = loginData.token
+      console.log('✅ Logged in successfully')
+    }
+  } catch (error) {
+    console.error('❌ Authentication failed:', error.message)
+    throw error
+  }
+}
+
 // Helper function to make API calls
 async function forumApiCall(endpoint, method = 'GET', data = null) {
+  if (!authToken) {
+    throw new Error('Not authenticated. Call login() first.')
+  }
+
   const url = `${FORUMMS_API_URL}${endpoint}`
   const options = {
     method,
     headers: {
-      'Authorization': `Bearer ${FORUMMS_API_KEY}`,
+      'Authorization': `Bearer ${authToken}`,
       'Content-Type': 'application/json',
+      'X-API-Key': FORUMMS_API_KEY,
     },
   }
 
@@ -125,12 +201,16 @@ async function seedDemoData() {
   console.log('🌱 Starting demo data seeding...\n')
 
   try {
+    // Step 0: Login to get auth token
+    await login()
+    console.log('')
+
     // Step 1: Create Demo School
     console.log('📚 Creating Demo School...')
-    const schoolThread = await forumApiCall('/threads', 'POST', {
+    const schoolThread = await forumApiCall('/thread', 'POST', {
       title: demoData.school.name,
-      content: demoData.school.description,
-      tags: ['school', 'demo'],
+      body: demoData.school.description,
+      userId: 'system', // Will be replaced by authenticated user
       extendedData: {
         type: 'school',
         joinKey: DEMO_SCHOOL_JOIN_KEY,
@@ -147,9 +227,10 @@ async function seedDemoData() {
     const subjectIds = {}
     
     for (const subject of demoData.subjects) {
-      const subjectPost = await forumApiCall('/posts', 'POST', {
+      const subjectPost = await forumApiCall('/post', 'POST', {
         threadId: schoolId,
-        content: `Subject: ${subject.name}`,
+        body: `Subject: ${subject.name}`,
+        userId: 'system',
         extendedData: {
           type: 'subject',
           name: subject.name,
@@ -168,9 +249,10 @@ async function seedDemoData() {
     
     for (const [subjectKey, courses] of Object.entries(demoData.courses)) {
       for (const course of courses) {
-        const coursePost = await forumApiCall('/posts', 'POST', {
+        const coursePost = await forumApiCall('/post', 'POST', {
           threadId: schoolId,
-          content: `${course.code}: ${course.title}`,
+          body: `${course.code}: ${course.title}`,
+          userId: 'system',
           extendedData: {
             type: 'course',
             subjectId: subjectIds[subjectKey],
@@ -193,10 +275,10 @@ async function seedDemoData() {
     
     for (const [courseCode, chapters] of Object.entries(demoData.chapters)) {
       for (const chapter of chapters) {
-        const chapterThread = await forumApiCall('/threads', 'POST', {
+        const chapterThread = await forumApiCall('/thread', 'POST', {
           title: `${chapter.label}: ${chapter.title}`,
-          content: `Chapter for ${courseCode}`,
-          tags: ['chapter', courseCode.toLowerCase()],
+          body: `Chapter for ${courseCode}`,
+          userId: 'system',
           extendedData: {
             type: 'chapter',
             courseId: courseIds[courseCode],
@@ -218,9 +300,10 @@ async function seedDemoData() {
     
     for (const chapterId of chaptersToSeed) {
       for (const contribution of demoData.sampleContributions) {
-        await forumApiCall('/posts', 'POST', {
+        await forumApiCall('/post', 'POST', {
           threadId: chapterId,
-          content: contribution.content,
+          body: contribution.content,
+          userId: 'system',
           extendedData: {
             type: 'contribution',
             contributionType: contribution.type,

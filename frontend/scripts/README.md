@@ -14,8 +14,14 @@ The seeder creates:
 ## Prerequisites
 
 1. Make sure `.env.local` file exists in the `frontend` directory
-2. Ensure `FORUMMS_API_KEY` is set in `.env.local`
+2. Set Foru.ms credentials in `.env.local`:
+   ```
+   FORUMMS_SEED_USERNAME=your_username
+   FORUMMS_SEED_PASSWORD=your_password
+   ```
 3. Install dependencies: `npm install`
+
+**Note:** The script will automatically register the user if they don't exist.
 
 ## How to Run
 
@@ -34,6 +40,7 @@ node scripts/seed-demo-data.js
 ## What Happens
 
 The script will:
+0. Login to Foru.ms (or register if user doesn't exist)
 1. Create a demo school thread in Foru.ms
 2. Add subjects as posts in the school thread
 3. Add courses as posts linked to subjects

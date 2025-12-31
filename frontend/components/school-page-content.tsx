@@ -4,9 +4,9 @@ import { Breadcrumbs } from "@/components/breadcrumbs"
 import { SubjectCard } from "@/components/subject-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { school, subjects } from "@/types/models"
+import type { Subject } from "@/types/models"
 import { Search, Bookmark, Shield, ArrowLeft } from "lucide-react"
-import { Suspense } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useActiveSchool } from "@/lib/active-school-context"
 import { can } from "@/lib/permissions"
@@ -32,16 +32,38 @@ export function SchoolPageContent({ schoolId }: SchoolPageContentProps) {
   const { activeMembership } = useActiveSchool()
   const isAdmin = can(activeMembership, "open_admin_dashboard")
   const showAdminDashboard = isAdmin && !isDemoSchool(schoolId)
+  
+  const [schoolName, setSchoolName] = useState("School")
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [loading, setLoading] = useState(true)
+  
+  useEffect(() => {
+    async function fetchSchoolData() {
+      try {
+        const res = await fetch(`/api/forum/schools/${schoolId}`)
+        if (res.ok) {
+          const data = await res.json()
+          setSchoolName(data.school?.name || "School")
+          setSubjects(data.subjects || [])
+        }
+      } catch (error) {
+        console.error('Error fetching school data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchSchoolData()
+  }, [schoolId])
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <Breadcrumbs items={[{ label: "School", href: "/gateway" }, { label: school.name }]} />
+      <Breadcrumbs items={[{ label: "School", href: "/gateway" }, { label: schoolName }]} />
 
       {/* Header */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
           <div>
-            <h1 className="font-serif text-4xl md:text-5xl font-bold text-ink mb-2">{school.name}</h1>
+            <h1 className="font-serif text-4xl md:text-5xl font-bold text-ink mb-2">{schoolName}</h1>
             <p className="text-lg text-muted">Choose a subject room to enter</p>
           </div>
 
@@ -82,9 +104,19 @@ export function SchoolPageContent({ schoolId }: SchoolPageContentProps) {
 
       {/* Subject Grid */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {subjects.map((subject) => (
-          <SubjectCard key={subject.id} subject={subject} schoolId={schoolId} />
-        ))}
+        {loading ? (
+          <div className="col-span-full text-center py-12">
+            <p className="text-muted">Loading subjects...</p>
+          </div>
+        ) : subjects.length > 0 ? (
+          subjects.map((subject) => (
+            <SubjectCard key={subject.id} subject={subject} schoolId={schoolId} />
+          ))
+        ) : (
+          <div className="col-span-full paper-card p-12 text-center">
+            <p className="text-muted text-lg">No subjects found for this school.</p>
+          </div>
+        )}
       </div>
     </div>
   )

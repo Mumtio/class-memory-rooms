@@ -23,7 +23,7 @@ import {
   Crown,
   GraduationCap,
 } from "lucide-react"
-import { subjects, courses, chapters } from "@/types/models"
+import type { Subject, Course, Chapter } from "@/types/models"
 import { useToast } from "@/hooks/use-toast"
 import { generateJoinKey } from "@/lib/workspace-store"
 import { isDemoSchool } from "@/lib/demo-school"
@@ -57,6 +57,29 @@ export function AdminPageContent({ schoolId }: { schoolId: string }) {
   const [minContributions, setMinContributions] = useState(15)
   const [studentCooldown, setStudentCooldown] = useState(2)
   const [joinKey, setJoinKey] = useState("DEMO2024")
+  
+  // Data state - will be fetched from API
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [courses, setCourses] = useState<Course[]>([])
+  const [chapters, setChapters] = useState<Chapter[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchSchoolData() {
+      try {
+        const res = await fetch(`/api/forum/schools/${schoolId}`)
+        if (res.ok) {
+          const data = await res.json()
+          setSubjects(data.subjects || [])
+        }
+      } catch (error) {
+        console.error('Error fetching school data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchSchoolData()
+  }, [schoolId])
 
   useEffect(() => {
     if (isDemoSchool(schoolId)) {

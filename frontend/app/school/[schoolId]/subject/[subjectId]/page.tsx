@@ -1,7 +1,7 @@
 import { Breadcrumbs } from "@/components/breadcrumbs"
 import { CourseRow } from "@/components/course-row"
 import { Button } from "@/components/ui/button"
-import { getSubject, getCoursesBySubject, school } from "@/lib/mock-data"
+import type { Subject, Course } from "@/types/models"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -13,14 +13,38 @@ interface SubjectPageProps {
   }>
 }
 
+async function getSubjectData(schoolId: string, subjectId: string): Promise<{ subject: Subject; courses: Course[]; schoolName: string } | null> {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    
+    // Fetch subject details and courses
+    const res = await fetch(`${baseUrl}/api/forum/schools/${schoolId}/subjects/${subjectId}`, {
+      cache: 'no-store'
+    })
+    
+    if (!res.ok) return null
+    const data = await res.json()
+    
+    return {
+      subject: data.subject,
+      courses: data.courses || [],
+      schoolName: data.schoolName || 'School'
+    }
+  } catch (error) {
+    console.error('Error fetching subject data:', error)
+    return null
+  }
+}
+
 export default async function SubjectPage({ params }: SubjectPageProps) {
   const { schoolId, subjectId } = await params
-  const subject = getSubject(subjectId)
-  const courses = getCoursesBySubject(subjectId)
+  const data = await getSubjectData(schoolId, subjectId)
 
-  if (!subject) {
+  if (!data) {
     notFound()
   }
+  
+  const { subject, courses, schoolName } = data
 
   return (
     <div className="min-h-screen bg-background">
@@ -28,7 +52,7 @@ export default async function SubjectPage({ params }: SubjectPageProps) {
         <Breadcrumbs
           items={[
             { label: "School", href: "/school/demo" },
-            { label: school.name, href: "/school/demo" },
+            { label: schoolName, href: "/school/demo" },
             { label: subject.name },
           ]}
         />

@@ -1,7 +1,7 @@
 import { Breadcrumbs } from "@/components/breadcrumbs"
 import { ChapterFolderCard } from "@/components/chapter-folder-card"
 import { Button } from "@/components/ui/button"
-import { getCourse, getChaptersByCourse, getSubjectByCourse, school } from "@/lib/mock-data"
+import type { Course, Subject, Chapter } from "@/types/models"
 import { ArrowLeft, Search, ChevronRight } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -12,15 +12,46 @@ interface CoursePageProps {
   }>
 }
 
+async function getCourseData(courseId: string): Promise<{ course: Course; subject: Subject; chapters: Chapter[]; schoolName: string } | null> {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    
+    // Fetch course details
+    const courseRes = await fetch(`${baseUrl}/api/forum/courses/${courseId}`, {
+      cache: 'no-store'
+    })
+    
+    if (!courseRes.ok) return null
+    const courseData = await courseRes.json()
+    
+    // Fetch chapters for this course
+    const chaptersRes = await fetch(`${baseUrl}/api/forum/courses/${courseId}/chapters`, {
+      cache: 'no-store'
+    })
+    
+    const chaptersData = chaptersRes.ok ? await chaptersRes.json() : { chapters: [] }
+    
+    return {
+      course: courseData.course,
+      subject: courseData.subject,
+      chapters: chaptersData.chapters || [],
+      schoolName: courseData.schoolName || 'School'
+    }
+  } catch (error) {
+    console.error('Error fetching course data:', error)
+    return null
+  }
+}
+
 export default async function CoursePage({ params }: CoursePageProps) {
   const { courseId } = await params
-  const course = getCourse(courseId)
-  const chapters = getChaptersByCourse(courseId)
-  const subject = course ? getSubjectByCourse(course.id) : undefined
+  const data = await getCourseData(courseId)
 
-  if (!course || !subject) {
+  if (!data) {
     notFound()
   }
+  
+  const { course, subject, chapters, schoolName } = data
 
   // Find the latest chapter (last in list with status not "Compiled")
   const latestChapter = chapters.find((ch) => ch.status !== "Compiled") || chapters[chapters.length - 1]
@@ -31,7 +62,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
         <Breadcrumbs
           items={[
             { label: "School", href: "/school/demo" },
-            { label: school.name, href: "/school/demo" },
+            { label: schoolName, href: "/school/demo" },
             { label: subject.name, href: `/school/demo/subject/${subject.id}` },
             { label: `${course.code}` },
           ]}
