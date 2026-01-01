@@ -4,33 +4,52 @@
 
 A collaborative learning platform where students contribute notes, photos, and resources to shared lecture rooms — then AI synthesizes everything into unified study materials.
 
-## What It Does :
+## How It Works
 
-1. **Schools create rooms** for each lecture/chapter
-2. **Students contribute** takeaways, note photos, resources, solved examples, and confusions
-3. **AI generates unified notes** from all contributions when enough content is collected
-4. **Everyone benefits** from the collective knowledge
+1. **Admins create schools** with subjects and courses
+2. **Students join** using a school join key
+3. **Students contribute** to lecture chapters: takeaways, note photos, resources, solved examples, confusions
+4. **AI generates unified notes** from all contributions when enough content is collected
+5. **Everyone benefits** from the collective knowledge
 
-## Built With
+## Tech Stack
 
-- **Foru.ms** — All data (schools, subjects, courses, chapters, contributions, notes) stored using Foru.ms threads and posts
-- **Next.js 15** — App Router with React 19
-- **Vercel Blob** — Image storage for note photos
-- **Google Gemini** — AI note generation
-- **shadcn/ui + Tailwind** — Paper-like educational UI
+| Layer | Technology |
+|-------|------------|
+| Frontend | Next.js 15, React 19, TypeScript |
+| UI | shadcn/ui, Tailwind CSS |
+| Data Storage | Foru.ms API (threads & posts) |
+| Image Storage | Vercel Blob Storage |
+| AI | Google Gemini |
+| Deployment | Vercel |
 
-## Foru.ms Data Model
+## Data Architecture
 
-| App Entity | Foru.ms Mapping |
-|------------|-----------------|
-| School | Thread (`type: 'school'`) |
-| Subject | Post (`type: 'subject'`) |
-| Course | Post (`type: 'course'`) |
-| Chapter/Lecture | Thread (`type: 'chapter'`) |
-| Contribution | Post (`type: 'contribution'`) |
-| AI Notes | Post (`type: 'unified_notes'`) |
+All application data is stored in Foru.ms using threads and posts with `extendedData` for metadata:
 
-## Quick Start
+| App Entity | Foru.ms Type | Storage Details |
+|------------|--------------|-----------------|
+| School | Thread | `extendedData.type: 'school'`, stores name, joinKey |
+| Subject | Post | `extendedData.type: 'subject'`, stores name, colorTag |
+| Course | Post | `extendedData.type: 'course'`, stores code, title, teacher, subjectId |
+| Chapter | Thread | `extendedData.type: 'chapter'`, stores courseId, label, status |
+| Contribution | Post | `extendedData.type: 'contribution'`, stores contributionType, content |
+| Reply | Post | `extendedData.type: 'reply'`, uses parentId for threading |
+| AI Notes | Post | `extendedData.type: 'unified_notes'`, stores version, generated content |
+
+### Image Handling
+
+- **Storage**: Vercel Blob Storage
+- **Flow**: User uploads image → stored in Vercel Blob → URL saved in contribution post's `extendedData.image.url`
+- **Access**: Public URLs, served directly from Vercel's CDN
+
+### User Authentication
+
+- **Registration/Login**: Proxied through Foru.ms `/auth/register` and `/auth/login`
+- **Session**: JWT token stored in localStorage
+- **School Memberships**: Stored client-side in localStorage (role, schoolName, joinedAt per school)
+
+## Local Development
 
 ```bash
 cd frontend
@@ -41,25 +60,25 @@ npm run dev
 ## Environment Variables
 
 ```env
-# Foru.ms
+# Foru.ms API
 FORUMMS_API_URL=https://foru.ms/api/v1
-FORUMMS_API_KEY=your_key
+FORUMMS_API_KEY=your_api_key
 
-# Vercel Blob (for image uploads)
+# Vercel Blob (image uploads)
 BLOB_READ_WRITE_TOKEN=your_token
 
-# Gemini AI
+# Google Gemini (AI notes)
 GEMINI_API_KEY=your_key
 ```
 
 ## Features
 
-- **Multi-school support** — Users can create/join multiple schools
-- **Role-based access** — Admin, Teacher, Student roles per school
-- **Contribution types** — Takeaways, note photos, resources, solved examples, confusions
-- **AI note generation** — Synthesizes contributions into structured study materials
-- **Version control** — Multiple versions of AI-generated notes
-- **Anonymous contributions** — Students can contribute anonymously
+- Multi-school workspaces with join keys
+- Role-based access (Admin, Teacher, Student)
+- 5 contribution types: takeaways, note photos, resources, solved examples, confusions
+- Anonymous contribution option
+- AI-generated unified notes with version history
+- Helpful votes on contributions
 
 ## Live Demo
 
