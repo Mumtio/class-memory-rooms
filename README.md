@@ -4,7 +4,7 @@
 
 A collaborative learning platform where students contribute notes, photos, and resources to shared lecture rooms — then AI synthesizes everything into unified study materials.
 
-## What It Does
+## What It Does :
 
 1. **Schools create rooms** for each lecture/chapter
 2. **Students contribute** takeaways, note photos, resources, solved examples, and confusions
