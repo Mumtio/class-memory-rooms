@@ -8,8 +8,36 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ArrowLeft, LogIn, AlertCircle } from "lucide-react"
 import Link from "next/link"
-import { joinSchool, useAuth } from "@/lib/auth-store"
-import { findSchoolByKey } from "@/lib/workspace-store"
+import { useAuth } from "@/lib/auth-store"
+
+// Helper to update auth state in localStorage
+function updateAuthWithSchool(schoolId: string, schoolName: string, role: string) {
+  if (typeof window === "undefined") return
+  
+  try {
+    const stored = localStorage.getItem("class-memory-rooms-auth")
+    if (!stored) return
+    
+    const authState = JSON.parse(stored)
+    if (!authState.user) return
+    
+    // Add the new school to memberships
+    authState.user.schoolMemberships = {
+      ...authState.user.schoolMemberships,
+      [schoolId]: {
+        role: role,
+        schoolName: schoolName,
+        joinedAt: new Date().toISOString(),
+      },
+    }
+    authState.user.currentSchoolId = schoolId
+    
+    localStorage.setItem("class-memory-rooms-auth", JSON.stringify(authState))
+    window.dispatchEvent(new Event("auth-change"))
+  } catch (error) {
+    console.error("Failed to update auth state:", error)
+  }
+}
 
 export default function JoinSchoolPage() {
   const router = useRouter()
@@ -29,35 +57,41 @@ export default function JoinSchoolPage() {
     setIsSubmitting(true)
     setError(null)
 
-    await new Promise((resolve) => setTimeout(resolve, 800))
-
-    const school = findSchoolByKey(joinKey)
-    const demoSchools: Record<string, string> = {
-      STANFORD2024: "demo",
-      DEMO2024: "demo",
-    }
-
-    if (!school && !demoSchools[joinKey.toUpperCase()]) {
-      setError("Invalid or expired key.")
-      setIsSubmitting(false)
-      return
-    }
-
-    const schoolId = school?.id || "demo"
-
     if (!user) {
       setError("User not authenticated.")
       setIsSubmitting(false)
       return
     }
 
-    const result = joinSchool(joinKey, user.name, user.email)
+    try {
+      // Call the join API
+      const response = await fetch('/api/schools/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          joinKey: joinKey.toUpperCase(),
+          userId: user.id,
+        }),
+      })
 
-    if (result.success && result.user) {
-      window.dispatchEvent(new Event("storage"))
-      router.push(`/school/${schoolId}`)
-    } else {
-      setError(result.error || "Invalid or expired key.")
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || "Invalid or expired key.")
+        setIsSubmitting(false)
+        return
+      }
+
+      // Update local auth state with the new school membership
+      updateAuthWithSchool(data.schoolId, data.schoolName, data.role)
+      
+      // Navigate to the school
+      router.push(`/school/${data.schoolId}`)
+    } catch (err) {
+      console.error("Join school error:", err)
+      setError("Failed to join school. Please try again.")
       setIsSubmitting(false)
     }
   }

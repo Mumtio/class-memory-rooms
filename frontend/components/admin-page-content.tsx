@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { Users, BookOpen, Settings, BarChart3, Copy, Check, UserPlus, Sparkles, ShieldAlert, Crown, GraduationCap, Plus, FileText, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react"
+import { Users, BookOpen, Settings, BarChart3, Copy, Check, UserPlus, Sparkles, ShieldAlert, Crown, GraduationCap, Plus, FileText, ChevronDown, ChevronRight, AlertTriangle, Pencil } from "lucide-react"
 import type { Subject, Course, Chapter } from "@/types/models"
 import { useToast } from "@/hooks/use-toast"
 import { generateJoinKey } from "@/lib/workspace-store"
@@ -51,6 +51,21 @@ export function AdminPageContent({ schoolId }: { schoolId: string }) {
   const [newLectureTitle, setNewLectureTitle] = useState("")
   const [newLectureLabel, setNewLectureLabel] = useState("")
   const [creatingLecture, setCreatingLecture] = useState(false)
+  const [schoolName, setSchoolName] = useState("")
+  const [showEditSchool, setShowEditSchool] = useState(false)
+  const [editSchoolName, setEditSchoolName] = useState("")
+  const [savingSchool, setSavingSchool] = useState(false)
+  const [showEditSubject, setShowEditSubject] = useState(false)
+  const [editSubjectId, setEditSubjectId] = useState("")
+  const [editSubjectName, setEditSubjectName] = useState("")
+  const [editSubjectColor, setEditSubjectColor] = useState("")
+  const [savingSubject, setSavingSubject] = useState(false)
+  const [showEditCourse, setShowEditCourse] = useState(false)
+  const [editCourseId, setEditCourseId] = useState("")
+  const [editCourseCode, setEditCourseCode] = useState("")
+  const [editCourseTitle, setEditCourseTitle] = useState("")
+  const [editCourseTeacher, setEditCourseTeacher] = useState("")
+  const [savingCourse, setSavingCourse] = useState(false)
 
 
   const fetchSchoolData = async () => {
@@ -60,6 +75,7 @@ export function AdminPageContent({ schoolId }: { schoolId: string }) {
         const data = await res.json()
         const subjectsData = data.subjects || []
         setJoinKey(data.school?.joinKey || "")
+        setSchoolName(data.school?.name || "")
         const subjectsWithCourses: SubjectWithCourses[] = await Promise.all(
           subjectsData.map(async (subject: Subject) => {
             try {
@@ -126,6 +142,57 @@ export function AdminPageContent({ schoolId }: { schoolId: string }) {
     finally { setCreatingLecture(false) }
   }
 
+  const handleEditSchool = async () => {
+    if (!editSchoolName.trim()) { toast({ title: "Error", description: "School name is required", variant: "destructive" }); return }
+    if (!user?.id) { toast({ title: "Error", description: "You must be logged in", variant: "destructive" }); return }
+    setSavingSchool(true)
+    try {
+      const res = await fetch(`/api/forum/schools/${schoolId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: editSchoolName.trim(), userId: user.id }) })
+      if (res.ok) { toast({ title: "Success", description: "School name updated" }); setShowEditSchool(false); setSchoolName(editSchoolName.trim()); await fetchSchoolData() }
+      else { const error = await res.json(); toast({ title: "Error", description: error.error || "Failed to update school", variant: "destructive" }) }
+    } catch (error) { toast({ title: "Error", description: "Failed to update school", variant: "destructive" }) }
+    finally { setSavingSchool(false) }
+  }
+
+  const handleEditSubject = async () => {
+    if (!editSubjectName.trim()) { toast({ title: "Error", description: "Subject name is required", variant: "destructive" }); return }
+    if (!user?.id || !editSubjectId) { toast({ title: "Error", description: "Missing required information", variant: "destructive" }); return }
+    setSavingSubject(true)
+    try {
+      const res = await fetch(`/api/forum/schools/${schoolId}/subjects/${editSubjectId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: editSubjectName.trim(), color: editSubjectColor, userId: user.id }) })
+      if (res.ok) { toast({ title: "Success", description: "Subject updated" }); setShowEditSubject(false); await fetchSchoolData() }
+      else { const error = await res.json(); toast({ title: "Error", description: error.error || "Failed to update subject", variant: "destructive" }) }
+    } catch (error) { toast({ title: "Error", description: "Failed to update subject", variant: "destructive" }) }
+    finally { setSavingSubject(false) }
+  }
+
+  const handleEditCourse = async () => {
+    if (!editCourseCode.trim() || !editCourseTitle.trim()) { toast({ title: "Error", description: "Course code and title are required", variant: "destructive" }); return }
+    if (!user?.id || !editCourseId) { toast({ title: "Error", description: "Missing required information", variant: "destructive" }); return }
+    setSavingCourse(true)
+    try {
+      const res = await fetch(`/api/forum/courses/${editCourseId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: editCourseCode.trim(), title: editCourseTitle.trim(), teacher: editCourseTeacher.trim() || 'TBD', userId: user.id }) })
+      if (res.ok) { toast({ title: "Success", description: "Course updated" }); setShowEditCourse(false); await fetchSchoolData() }
+      else { const error = await res.json(); toast({ title: "Error", description: error.error || "Failed to update course", variant: "destructive" }) }
+    } catch (error) { toast({ title: "Error", description: "Failed to update course", variant: "destructive" }) }
+    finally { setSavingCourse(false) }
+  }
+
+  const openEditSubject = (subject: SubjectWithCourses) => {
+    setEditSubjectId(subject.id)
+    setEditSubjectName(subject.name)
+    setEditSubjectColor(subject.colorTag)
+    setShowEditSubject(true)
+  }
+
+  const openEditCourse = (course: Course) => {
+    setEditCourseId(course.id)
+    setEditCourseCode(course.code)
+    setEditCourseTitle(course.title)
+    setEditCourseTeacher(course.teacher || '')
+    setShowEditCourse(true)
+  }
+
   if (!can(activeMembership, "open_admin_dashboard")) {
     return (<div className="min-h-screen bg-background flex items-center justify-center"><div className="paper-card p-8 text-center max-w-md"><ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" /><h2 className="font-serif text-2xl font-bold text-ink mb-2">Access Denied</h2><p className="text-muted mb-4">You are not an admin in this school.</p><Button onClick={() => router.push(`/school/${schoolId}`)}>Back to School</Button></div></div>)
   }
@@ -187,12 +254,12 @@ export function AdminPageContent({ schoolId }: { schoolId: string }) {
                     <div className="p-6">
                       <div className="flex items-center justify-between mb-2">
                         <button onClick={() => toggleSubjectExpanded(subject.id)} className="flex items-center gap-3 hover:opacity-80">{expandedSubjects.has(subject.id) ? <ChevronDown className="h-5 w-5 text-muted" /> : <ChevronRight className="h-5 w-5 text-muted" />}<div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: subject.colorTag }} /><h3 className="font-serif text-xl font-bold text-ink">{subject.name}</h3></button>
-                        <Button variant="outline" size="sm" onClick={() => { setSelectedSubjectId(subject.id); setShowCreateCourse(true) }}><Plus className="mr-2 h-4 w-4" />Add Course</Button>
+                        <div className="flex gap-2"><Button variant="ghost" size="sm" onClick={() => openEditSubject(subject)}><Pencil className="h-4 w-4" /></Button><Button variant="outline" size="sm" onClick={() => { setSelectedSubjectId(subject.id); setShowCreateCourse(true) }}><Plus className="mr-2 h-4 w-4" />Add Course</Button></div>
                       </div>
                       <div className="text-sm text-muted ml-12">{subject.courses?.length || 0} courses • {subject.chapterCount} lectures</div>
                     </div>
                     {expandedSubjects.has(subject.id) && subject.courses && subject.courses.length > 0 && (
-                      <div className="border-t border-border bg-accent/20">{subject.courses.map((course) => (<div key={course.id} className="p-4 pl-12 flex items-center justify-between border-b border-border last:border-b-0"><div><div className="font-medium text-ink">{course.code}: {course.title}</div><div className="text-sm text-muted">Teacher: {course.teacher}</div></div><Button variant="ghost" size="sm" onClick={() => { setSelectedCourseId(course.id); setShowCreateLecture(true) }}><FileText className="mr-2 h-4 w-4" />Add Lecture</Button></div>))}</div>
+                      <div className="border-t border-border bg-accent/20">{subject.courses.map((course) => (<div key={course.id} className="p-4 pl-12 flex items-center justify-between border-b border-border last:border-b-0"><div><div className="font-medium text-ink">{course.code}: {course.title}</div><div className="text-sm text-muted">Teacher: {course.teacher}</div></div><div className="flex gap-2"><Button variant="ghost" size="sm" onClick={() => openEditCourse(course)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="sm" onClick={() => { setSelectedCourseId(course.id); setShowCreateLecture(true) }}><FileText className="mr-2 h-4 w-4" />Add Lecture</Button></div></div>))}</div>
                     )}
                     {expandedSubjects.has(subject.id) && (!subject.courses || subject.courses.length === 0) && (<div className="border-t border-border bg-accent/20 p-6 text-center"><p className="text-sm text-muted">No courses yet. Add a course to get started.</p></div>)}
                   </div>
@@ -201,6 +268,8 @@ export function AdminPageContent({ schoolId }: { schoolId: string }) {
             </div>
             <Dialog open={showCreateCourse} onOpenChange={setShowCreateCourse}><DialogContent><DialogHeader><DialogTitle>Create New Course</DialogTitle><DialogDescription>Add a new course to the selected subject.</DialogDescription></DialogHeader><div className="space-y-4 py-4"><div className="space-y-2"><Label htmlFor="course-code">Course Code</Label><Input id="course-code" placeholder="e.g., MATH101" value={newCourseCode} onChange={(e) => setNewCourseCode(e.target.value)} /></div><div className="space-y-2"><Label htmlFor="course-title">Course Title</Label><Input id="course-title" placeholder="e.g., Introduction to Calculus" value={newCourseTitle} onChange={(e) => setNewCourseTitle(e.target.value)} /></div><div className="space-y-2"><Label htmlFor="course-teacher">Teacher (optional)</Label><Input id="course-teacher" placeholder="e.g., Dr. Smith" value={newCourseTeacher} onChange={(e) => setNewCourseTeacher(e.target.value)} /></div></div><DialogFooter><Button variant="outline" onClick={() => setShowCreateCourse(false)}>Cancel</Button><Button onClick={handleCreateCourse} disabled={creatingCourse}>{creatingCourse ? "Creating..." : "Create Course"}</Button></DialogFooter></DialogContent></Dialog>
             <Dialog open={showCreateLecture} onOpenChange={setShowCreateLecture}><DialogContent><DialogHeader><DialogTitle>Create New Lecture</DialogTitle><DialogDescription>Add a new lecture to the selected course.</DialogDescription></DialogHeader><div className="space-y-4 py-4"><div className="space-y-2"><Label htmlFor="lecture-title">Lecture Title</Label><Input id="lecture-title" placeholder="e.g., Introduction to Derivatives" value={newLectureTitle} onChange={(e) => setNewLectureTitle(e.target.value)} /></div><div className="space-y-2"><Label htmlFor="lecture-label">Label (optional)</Label><Input id="lecture-label" placeholder="e.g., Week 1, Chapter 1" value={newLectureLabel} onChange={(e) => setNewLectureLabel(e.target.value)} /></div></div><DialogFooter><Button variant="outline" onClick={() => setShowCreateLecture(false)}>Cancel</Button><Button onClick={handleCreateLecture} disabled={creatingLecture}>{creatingLecture ? "Creating..." : "Create Lecture"}</Button></DialogFooter></DialogContent></Dialog>
+            <Dialog open={showEditSubject} onOpenChange={setShowEditSubject}><DialogContent><DialogHeader><DialogTitle>Edit Subject</DialogTitle><DialogDescription>Update the subject name and color.</DialogDescription></DialogHeader><div className="space-y-4 py-4"><div className="space-y-2"><Label htmlFor="edit-subject-name">Subject Name</Label><Input id="edit-subject-name" placeholder="e.g., Mathematics, Physics" value={editSubjectName} onChange={(e) => setEditSubjectName(e.target.value)} /></div><div className="space-y-2"><Label htmlFor="edit-subject-color">Color</Label><div className="flex gap-2"><Input id="edit-subject-color" type="color" value={editSubjectColor} onChange={(e) => setEditSubjectColor(e.target.value)} className="w-16 h-10 p-1" /><Input value={editSubjectColor} onChange={(e) => setEditSubjectColor(e.target.value)} placeholder="#7EC8E3" className="flex-1" /></div></div></div><DialogFooter><Button variant="outline" onClick={() => setShowEditSubject(false)}>Cancel</Button><Button onClick={handleEditSubject} disabled={savingSubject}>{savingSubject ? "Saving..." : "Save"}</Button></DialogFooter></DialogContent></Dialog>
+            <Dialog open={showEditCourse} onOpenChange={setShowEditCourse}><DialogContent><DialogHeader><DialogTitle>Edit Course</DialogTitle><DialogDescription>Update the course details.</DialogDescription></DialogHeader><div className="space-y-4 py-4"><div className="space-y-2"><Label htmlFor="edit-course-code">Course Code</Label><Input id="edit-course-code" placeholder="e.g., MATH101" value={editCourseCode} onChange={(e) => setEditCourseCode(e.target.value)} /></div><div className="space-y-2"><Label htmlFor="edit-course-title">Course Title</Label><Input id="edit-course-title" placeholder="e.g., Introduction to Calculus" value={editCourseTitle} onChange={(e) => setEditCourseTitle(e.target.value)} /></div><div className="space-y-2"><Label htmlFor="edit-course-teacher">Teacher (optional)</Label><Input id="edit-course-teacher" placeholder="e.g., Dr. Smith" value={editCourseTeacher} onChange={(e) => setEditCourseTeacher(e.target.value)} /></div></div><DialogFooter><Button variant="outline" onClick={() => setShowEditCourse(false)}>Cancel</Button><Button onClick={handleEditCourse} disabled={savingCourse}>{savingCourse ? "Saving..." : "Save"}</Button></DialogFooter></DialogContent></Dialog>
           </div>
         )}
 
@@ -218,9 +287,11 @@ export function AdminPageContent({ schoolId }: { schoolId: string }) {
           <div className="space-y-6">
             <div><h2 className="font-serif text-3xl font-bold text-ink mb-2">School Settings</h2><p className="text-muted">Manage school configuration and security</p></div>
             <div className="paper-card p-6 space-y-6">
-              <div><Label className="text-base font-medium text-ink mb-4 block">Join Key</Label><p className="text-sm text-muted mb-4">Current join key for your school. Regenerate if compromised.</p><div className="flex gap-2 mb-4"><Input value={joinKey} readOnly className="font-mono text-lg" /><Button onClick={handleCopyKey} variant="outline" size="icon">{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}</Button></div><Button onClick={handleRegenerateKey} variant="outline">Regenerate Join Key</Button></div>
+              <div><Label className="text-base font-medium text-ink mb-4 block">School Name</Label><p className="text-sm text-muted mb-4">Change the name of your school.</p><div className="flex gap-2 mb-4"><Input value={schoolName} readOnly className="text-lg" /><Button onClick={() => { setEditSchoolName(schoolName); setShowEditSchool(true) }} variant="outline" size="icon"><Pencil className="h-4 w-4" /></Button></div></div>
+              <div className="border-t border-border pt-6"><Label className="text-base font-medium text-ink mb-4 block">Join Key</Label><p className="text-sm text-muted mb-4">Current join key for your school. Regenerate if compromised.</p><div className="flex gap-2 mb-4"><Input value={joinKey} readOnly className="font-mono text-lg" /><Button onClick={handleCopyKey} variant="outline" size="icon">{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}</Button></div><Button onClick={handleRegenerateKey} variant="outline">Regenerate Join Key</Button></div>
               <div className="border-t border-border pt-6"><Label className="text-base font-medium text-destructive mb-2 flex items-center gap-2"><AlertTriangle className="h-5 w-5" />Danger Zone</Label><p className="text-sm text-muted mb-4">Permanently delete this school and all its data. This action cannot be undone.</p><Button variant="destructive" disabled>Delete School (Coming Soon)</Button></div>
             </div>
+            <Dialog open={showEditSchool} onOpenChange={setShowEditSchool}><DialogContent><DialogHeader><DialogTitle>Edit School Name</DialogTitle><DialogDescription>Change the name of your school.</DialogDescription></DialogHeader><div className="space-y-4 py-4"><div className="space-y-2"><Label htmlFor="edit-school-name">School Name</Label><Input id="edit-school-name" placeholder="e.g., My School" value={editSchoolName} onChange={(e) => setEditSchoolName(e.target.value)} /></div></div><DialogFooter><Button variant="outline" onClick={() => setShowEditSchool(false)}>Cancel</Button><Button onClick={handleEditSchool} disabled={savingSchool}>{savingSchool ? "Saving..." : "Save"}</Button></DialogFooter></DialogContent></Dialog>
           </div>
         )}
       </main>

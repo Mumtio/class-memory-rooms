@@ -5,10 +5,17 @@ import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 import { useAuth } from "@/lib/auth-store"
 import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
 
 export function HeroSection() {
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, isHydrated, user } = useAuth()
   const router = useRouter()
+  const [mounted, setMounted] = useState(false)
+
+  // Wait for client-side hydration to complete
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleGetStarted = () => {
     if (isAuthenticated && user) {
@@ -26,6 +33,10 @@ export function HeroSection() {
       router.push("/signup")
     }
   }
+
+  // Always render "Get Started" on server and initial client render to avoid hydration mismatch
+  // Only show "Go to Rooms" after hydration is complete
+  const buttonText = mounted && isHydrated && isAuthenticated ? "Go to Rooms" : "Get Started"
 
   return (
     <section className="container mx-auto px-4 py-16 md:py-24">
@@ -56,7 +67,7 @@ export function HeroSection() {
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Button size="lg" className="text-lg px-8" onClick={handleGetStarted}>
-            {isAuthenticated ? "Go to Rooms" : "Get Started"} <ArrowRight className="ml-2 h-5 w-5" />
+            {buttonText} <ArrowRight className="ml-2 h-5 w-5" />
           </Button>
           <Button size="lg" variant="outline" className="text-lg px-8 bg-transparent" asChild>
             <Link href="#how-it-works">How it works</Link>

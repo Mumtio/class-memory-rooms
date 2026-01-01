@@ -100,12 +100,12 @@ export async function POST(request: NextRequest) {
     }
     
     // 4. Create school thread in Foru.ms with proper extendedData structure
+    // Note: Don't include tags as Foru.ms requires tag IDs, not strings
     const authenticatedClient = await getAuthenticatedForumClient();
     const thread = await authenticatedClient.createThread({
       title: name,
       body: description || '',
       slug: generateJoinKey().toLowerCase(), // Use a unique slug
-      tags: ['school'],
       extendedData: {
         type: 'school',
         joinKey,

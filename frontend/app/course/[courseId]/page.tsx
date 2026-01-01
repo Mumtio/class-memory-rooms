@@ -92,17 +92,14 @@ export default async function CoursePage({ params }: CoursePageProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 flex-wrap mt-4">
-                <div className="px-3 py-1 bg-background rounded-full text-sm font-semibold text-muted border border-border">
-                  {course.teacher}
+              {/* Only show teacher name */}
+              {course.teacher && course.teacher !== 'TBD' && (
+                <div className="flex items-center gap-3 flex-wrap mt-4">
+                  <div className="px-3 py-1 bg-background rounded-full text-sm font-semibold text-muted border border-border">
+                    {course.teacher}
+                  </div>
                 </div>
-                <div className="px-3 py-1 bg-background rounded-full text-sm font-semibold text-muted border border-border">
-                  {course.term}
-                </div>
-                <div className="px-3 py-1 bg-background rounded-full text-sm font-semibold text-muted border border-border">
-                  Section {course.section}
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3 flex-wrap lg:flex-nowrap">
@@ -123,12 +120,17 @@ export default async function CoursePage({ params }: CoursePageProps) {
         </div>
 
         {/* Chapter Grid */}
-        <div>
-          <h2 className="font-serif text-2xl font-bold text-ink mb-6">Chapters & Lectures</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-12">
+        <div className="mt-8">
+          <h2 className="font-serif text-2xl font-bold text-ink mb-10">Chapters & Lectures</h2>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-14">
             {chapters.length > 0 ? (
               chapters.map((chapter) => (
-                <ChapterFolderCard key={chapter.id} chapter={chapter} subjectColor={subject.colorTag} />
+                <ChapterFolderCard 
+                  key={chapter.id} 
+                  chapter={chapter} 
+                  subjectColor={subject.colorTag}
+                  hasNotes={(chapter as any).hasNotes}
+                />
               ))
             ) : (
               <div className="col-span-full paper-card p-12 text-center">

@@ -95,15 +95,16 @@ export async function POST(
       type,
       imageUrl,
       links = [],
+      link,
       anonymous = false,
       userId,
       authorName,
     } = body;
 
     // Validate input
-    if (!content || content.trim().length < 1) {
+    if (!content && !imageUrl && !link && links.length === 0) {
       return NextResponse.json(
-        { error: 'Content is required' },
+        { error: 'Content, image, or link is required' },
         { status: 400 }
       );
     }
@@ -131,18 +132,37 @@ export async function POST(
       );
     }
 
-    // Create structured content (includes image if present)
-    const structuredContent = createStructuredContent({
-      title,
-      content,
-      imageUrl,
-      links,
-      anonymous,
-    });
+    // Build structured content for the post body
+    const structuredData: any = {
+      title: title?.trim(),
+      content: content || '',
+      anonymous: anonymous,
+    };
+
+    // Handle image URL
+    if (imageUrl) {
+      structuredData.image = {
+        url: imageUrl,
+        alt: title || 'Uploaded image',
+      };
+    }
+
+    // Handle link (can be object or array)
+    if (link && typeof link === 'object') {
+      structuredData.link = {
+        url: link.url,
+        title: link.title || 'Link',
+      };
+    } else if (links && links.length > 0) {
+      structuredData.link = {
+        url: links[0],
+        title: 'Link',
+      };
+    }
+
+    const structuredContent = JSON.stringify(structuredData);
 
     // Create post with proper extendedData
-    // Store authorName so we don't rely on Foru.ms user lookup
-    // Note: Don't store imageUrl in extendedData to avoid doubling payload size
     const post = await forumClient.createPost({
       threadId: chapterId,
       body: structuredContent,
@@ -153,7 +173,7 @@ export async function POST(
         title: title?.trim(),
         anonymous: anonymous,
         hasImage: !!imageUrl,
-        links: links,
+        hasLink: !!(link || (links && links.length > 0)),
         createdBy: userId,
         authorName: authorName || 'Unknown User',
       }

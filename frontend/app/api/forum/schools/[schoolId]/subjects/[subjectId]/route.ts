@@ -68,3 +68,82 @@ export async function GET(
     );
   }
 }
+
+
+// PATCH /api/forum/schools/[schoolId]/subjects/[subjectId] - Update subject name/color
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ schoolId: string; subjectId: string }> }
+) {
+  try {
+    const { schoolId, subjectId } = await params;
+    const body = await request.json();
+    const { name, color, userId } = body;
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get current subject post
+    let subjectPost;
+    try {
+      subjectPost = await forumClient.getPost(subjectId);
+    } catch (error) {
+      return NextResponse.json(
+        { error: 'Subject not found' },
+        { status: 404 }
+      );
+    }
+
+    if (!subjectPost || subjectPost.extendedData?.type !== 'subject') {
+      return NextResponse.json(
+        { error: 'Subject not found' },
+        { status: 404 }
+      );
+    }
+
+    // Build updated extendedData
+    const updatedExtendedData = {
+      ...subjectPost.extendedData,
+    };
+
+    if (name && name.trim()) {
+      updatedExtendedData.name = name.trim();
+    }
+
+    if (color && color.match(/^#[0-9A-Fa-f]{6}$/)) {
+      updatedExtendedData.color = color;
+      updatedExtendedData.colorTag = color;
+    }
+
+    // Update the post - Foru.ms updatePost only updates body, so we need to use a workaround
+    // We'll update the body with the new name and include extendedData
+    const newBody = JSON.stringify({
+      name: updatedExtendedData.name,
+      color: updatedExtendedData.color,
+      colorTag: updatedExtendedData.colorTag,
+    });
+
+    // Note: The forum client's updatePost only updates body content
+    // For full extendedData updates, we may need to extend the client
+    await forumClient.updatePost(subjectId, newBody);
+
+    return NextResponse.json({
+      success: true,
+      subject: {
+        id: subjectId,
+        name: updatedExtendedData.name,
+        colorTag: updatedExtendedData.colorTag,
+      },
+    });
+  } catch (error) {
+    console.error('Update subject error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update subject' },
+      { status: 500 }
+    );
+  }
+}

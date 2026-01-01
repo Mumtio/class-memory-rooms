@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import type { ContributionType } from "@/types/models"
-import { Upload, X, Loader2 } from "lucide-react"
+import { Upload, X, Loader2, ImageIcon } from "lucide-react"
 import { useAuth } from "@/lib/auth-store"
 
 interface ContributionComposerModalProps {
@@ -27,54 +27,28 @@ interface ContributionComposerModalProps {
   }) => void
 }
 
-// Helper to convert file to data URL
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
+// Upload image to Vercel Blob Storage
+async function uploadImage(file: File): Promise<{ url: string; error?: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
 
-// Helper to compress image - more aggressive compression for API limits
-async function compressImage(file: File, maxWidth: number = 600, quality: number = 0.5): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    const img = new Image()
+  try {
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
 
-    img.onload = () => {
-      let width = img.width
-      let height = img.height
-
-      // Scale down if needed
-      if (width > maxWidth) {
-        height = (height * maxWidth) / width
-        width = maxWidth
-      }
-
-      canvas.width = width
-      canvas.height = height
-
-      ctx?.drawImage(img, 0, 0, width, height)
-
-      // Convert to JPEG with lower quality for smaller size
-      const dataUrl = canvas.toDataURL('image/jpeg', quality)
-      
-      // Check if still too large (> 100KB base64 ~ 75KB actual)
-      if (dataUrl.length > 150000 && quality > 0.3) {
-        // Try again with lower quality
-        const lowerQualityUrl = canvas.toDataURL('image/jpeg', 0.3)
-        resolve(lowerQualityUrl)
-      } else {
-        resolve(dataUrl)
-      }
+    if (!response.ok) {
+      const errorData = await response.json();
+      return { url: '', error: errorData.error || 'Upload failed' };
     }
 
-    img.onerror = () => reject(new Error('Failed to load image'))
-    img.src = URL.createObjectURL(file)
-  })
+    const data = await response.json();
+    return { url: data.url };
+  } catch (error) {
+    console.error('Upload error:', error);
+    return { url: '', error: 'Failed to upload image' };
+  }
 }
 
 export function ContributionComposerModal({ 
@@ -95,8 +69,8 @@ export function ContributionComposerModal({
   
   // Image state
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
-  const [processing, setProcessing] = useState(false)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,30 +83,42 @@ export function ContributionComposerModal({
       return
     }
 
-    // Validate file size (5MB max before compression)
+    // Validate file size (5MB max)
     if (file.size > 5 * 1024 * 1024) {
       setError('Image must be less than 5MB')
       return
     }
 
     setError('')
-    setProcessing(true)
+    setUploading(true)
+
+    // Show local preview immediately
+    const localPreview = URL.createObjectURL(file)
+    setImagePreview(localPreview)
 
     try {
-      // Compress the image
-      const compressedDataUrl = await compressImage(file, 800)
-      setImagePreview(compressedDataUrl)
-      setImageDataUrl(compressedDataUrl)
+      // Upload to Vercel Blob Storage
+      const result = await uploadImage(file)
+      
+      if (result.error) {
+        setError(result.error)
+        setImagePreview(null)
+        setImageUrl(null)
+      } else {
+        setImageUrl(result.url)
+      }
     } catch (err) {
-      setError('Failed to process image')
+      setError('Failed to upload image')
+      setImagePreview(null)
+      setImageUrl(null)
     } finally {
-      setProcessing(false)
+      setUploading(false)
     }
   }
 
   const handleRemoveImage = () => {
     setImagePreview(null)
-    setImageDataUrl(null)
+    setImageUrl(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -145,8 +131,13 @@ export function ContributionComposerModal({
       return
     }
 
-    if (!content && !linkUrl && !imageDataUrl) {
+    if (!content && !linkUrl && !imageUrl) {
       setError("Please add content, a link, or an image")
+      return
+    }
+
+    if (uploading) {
+      setError("Please wait for image upload to complete")
       return
     }
 
@@ -156,7 +147,7 @@ export function ContributionComposerModal({
       title: title || undefined,
       content: content || undefined,
       link: linkUrl ? { url: linkUrl, title: linkTitle || "Link" } : undefined,
-      image: imageDataUrl ? { url: imageDataUrl, alt: title || "Uploaded image" } : undefined,
+      image: imageUrl ? { url: imageUrl, alt: title || "Uploaded image" } : undefined,
       anonymous,
     })
 
@@ -169,7 +160,7 @@ export function ContributionComposerModal({
     setAnonymous(false)
     setError("")
     setImagePreview(null)
-    setImageDataUrl(null)
+    setImageUrl(null)
     onOpenChange(false)
   }
 
@@ -272,16 +263,22 @@ export function ContributionComposerModal({
                 <button
                   onClick={handleRemoveImage}
                   className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
-                  disabled={processing}
+                  disabled={uploading}
                 >
                   <X className="h-4 w-4" />
                 </button>
-                {processing && (
+                {uploading && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
                     <div className="text-white text-center">
                       <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                      <p className="text-sm">Processing...</p>
+                      <p className="text-sm">Uploading...</p>
                     </div>
+                  </div>
+                )}
+                {imageUrl && !uploading && (
+                  <div className="absolute bottom-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                    <ImageIcon className="h-3 w-3" />
+                    Uploaded
                   </div>
                 )}
               </div>
@@ -292,7 +289,7 @@ export function ContributionComposerModal({
               >
                 <Upload className="h-8 w-8 text-muted mx-auto mb-2" />
                 <p className="text-sm text-muted mb-1">Click to upload or drag and drop</p>
-                <p className="text-xs text-muted">PNG, JPG up to 5MB (will be compressed)</p>
+                <p className="text-xs text-muted">PNG, JPG up to 5MB</p>
               </div>
             )}
           </div>
@@ -319,11 +316,11 @@ export function ContributionComposerModal({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={processing}>
-            {processing ? (
+          <Button onClick={handleSubmit} disabled={uploading}>
+            {uploading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Processing...
+                Uploading...
               </>
             ) : (
               'Publish Contribution'

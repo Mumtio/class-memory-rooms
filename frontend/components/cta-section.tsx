@@ -5,10 +5,16 @@ import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 import { useAuth } from "@/lib/auth-store"
 import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
 
 export function CTASection() {
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, user, isHydrated } = useAuth()
   const router = useRouter()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleGetStarted = () => {
     if (isAuthenticated && user) {
@@ -27,19 +33,22 @@ export function CTASection() {
     }
   }
 
+  // Use consistent initial render to avoid hydration mismatch
+  const showAuthenticatedContent = mounted && isHydrated && isAuthenticated
+
   return (
     <section className="container mx-auto px-4 py-16 md:py-20">
       <div className="max-w-4xl mx-auto text-center paper-card p-12 sketch-shadow">
         <h2 className="font-serif text-3xl md:text-4xl font-bold text-ink mb-4">
-          {isAuthenticated ? "Continue your learning journey" : "Ready to start learning together?"}
+          {showAuthenticatedContent ? "Continue your learning journey" : "Ready to start learning together?"}
         </h2>
         <p className="text-lg text-muted mb-8 max-w-2xl mx-auto">
-          {isAuthenticated
+          {showAuthenticatedContent
             ? "Jump back into your collaborative notes and keep building knowledge with your classmates."
             : "Join thousands of students already collaborating on notes, sharing knowledge, and acing their exams."}
         </p>
         <Button size="lg" className="text-lg px-8" onClick={handleGetStarted}>
-          {isAuthenticated ? "Go to my rooms" : "Get started"} <ArrowRight className="ml-2 h-5 w-5" />
+          {showAuthenticatedContent ? "Go to my rooms" : "Get started"} <ArrowRight className="ml-2 h-5 w-5" />
         </Button>
       </div>
     </section>

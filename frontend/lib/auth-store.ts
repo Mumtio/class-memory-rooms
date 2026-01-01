@@ -105,6 +105,10 @@ export async function login(
   password: string
 ): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
+    // Get existing state to preserve school memberships
+    const existingState = getAuthState();
+    const existingMemberships = existingState.user?.schoolMemberships || {};
+
     // Call Next.js API route which proxies to Foru.ms
     const response = await fetch('/api/auth/login', {
       method: 'POST',
@@ -127,12 +131,20 @@ export async function login(
 
     const data = await response.json()
 
+    // Check if this user already has memberships stored (same user re-logging in)
+    // or if there are memberships from a previous session with same user ID
+    let schoolMemberships = {};
+    if (existingState.user?.id === data.user.id) {
+      // Same user - preserve their memberships
+      schoolMemberships = existingMemberships;
+    }
+
     const user: User = {
       id: data.user.id,
       name: data.user.name,
       email: data.user.email,
-      schoolMemberships: {},
-      currentSchoolId: undefined,
+      schoolMemberships: schoolMemberships,
+      currentSchoolId: Object.keys(schoolMemberships)[0] || undefined,
     }
 
     saveAuthState({ user, isAuthenticated: true }, data.token)

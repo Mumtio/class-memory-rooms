@@ -11,8 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronDown, Building2, Check } from "lucide-react"
+import { ChevronDown, Building2, Check, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 export function SchoolSwitcher() {
   const { user } = useAuth()
@@ -22,7 +23,14 @@ export function SchoolSwitcher() {
   const memberships = getUserMemberships(user)
 
   if (memberships.length === 0) {
-    return null
+    return (
+      <Button asChild variant="ghost" className="gap-2 border border-muted-foreground/20 bg-card/50 hover:bg-card">
+        <Link href="/gateway/create">
+          <Plus className="h-4 w-4" />
+          <span>Create School</span>
+        </Link>
+      </Button>
+    )
   }
 
   const handleSchoolChange = (schoolId: string) => {
@@ -40,7 +48,7 @@ export function SchoolSwitcher() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[280px]">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Your Schools</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-muted-foreground">Your Schools ({memberships.length})</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {memberships.map((membership) => {
           const isActive = membership.schoolId === activeSchoolId
@@ -68,6 +76,13 @@ export function SchoolSwitcher() {
             </DropdownMenuItem>
           )
         })}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="cursor-pointer">
+          <Link href="/gateway/create" className="flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            <span>Create New School</span>
+          </Link>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

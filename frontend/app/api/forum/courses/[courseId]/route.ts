@@ -74,3 +74,78 @@ export async function GET(
     );
   }
 }
+
+
+// PATCH /api/forum/courses/[courseId] - Update course details
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ courseId: string }> }
+) {
+  try {
+    const { courseId } = await params;
+    const body = await request.json();
+    const { code, title, teacher, userId } = body;
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get current course post
+    let coursePost;
+    try {
+      coursePost = await forumClient.getPost(courseId);
+    } catch (error) {
+      return NextResponse.json(
+        { error: 'Course not found' },
+        { status: 404 }
+      );
+    }
+
+    if (!coursePost || coursePost.extendedData?.type !== 'course') {
+      return NextResponse.json(
+        { error: 'Course not found' },
+        { status: 404 }
+      );
+    }
+
+    // Build updated data
+    const updatedData: any = {
+      ...coursePost.extendedData,
+    };
+
+    if (code && code.trim()) {
+      updatedData.code = code.trim();
+    }
+
+    if (title && title.trim()) {
+      updatedData.title = title.trim();
+    }
+
+    if (teacher !== undefined) {
+      updatedData.teacher = teacher.trim() || 'TBD';
+    }
+
+    // Update the post body with new data
+    const newBody = JSON.stringify(updatedData);
+    await forumClient.updatePost(courseId, newBody);
+
+    return NextResponse.json({
+      success: true,
+      course: {
+        id: courseId,
+        code: updatedData.code,
+        title: updatedData.title,
+        teacher: updatedData.teacher,
+      },
+    });
+  } catch (error) {
+    console.error('Update course error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update course' },
+      { status: 500 }
+    );
+  }
+}

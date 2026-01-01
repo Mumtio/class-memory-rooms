@@ -1,15 +1,17 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Users, BookOpen, ImageIcon } from "lucide-react"
+import { BookOpen, ImageIcon } from "lucide-react"
 import type { Chapter } from "@/types/models"
 
 interface ChapterFolderCardProps {
   chapter: Chapter
   subjectColor?: string
+  hasNotes?: boolean
 }
 
-export function ChapterFolderCard({ chapter, subjectColor = "#D6FF3F" }: ChapterFolderCardProps) {
-  const isCompiled = chapter.status === "Compiled"
+export function ChapterFolderCard({ chapter, subjectColor = "#D6FF3F", hasNotes }: ChapterFolderCardProps) {
+  // Enable View Notes if chapter has notes OR status is Compiled
+  const canViewNotes = hasNotes || chapter.status === "Compiled" || (chapter as any).hasNotes
 
   return (
     <div className="paper-card p-6 relative sketch-shadow hover:shadow-lg transition-all">
@@ -43,12 +45,8 @@ export function ChapterFolderCard({ chapter, subjectColor = "#D6FF3F" }: Chapter
         </div>
       </div>
 
-      {/* Meta row */}
+      {/* Meta row - removed people icon, only show resources and photos */}
       <div className="flex items-center gap-4 text-sm text-muted mb-6 pb-6 border-b border-border">
-        <div className="flex items-center gap-1" title="Contributions">
-          <Users className="h-4 w-4" />
-          <span>{chapter.contributions}</span>
-        </div>
         <div className="flex items-center gap-1" title="Resources">
           <BookOpen className="h-4 w-4" />
           <span>{chapter.resources}</span>
@@ -64,8 +62,8 @@ export function ChapterFolderCard({ chapter, subjectColor = "#D6FF3F" }: Chapter
         <Button className="flex-1" asChild>
           <Link href={`/chapter/${chapter.id}`}>Enter Chapter</Link>
         </Button>
-        <Button variant="outline" className="flex-1 bg-transparent" disabled={!isCompiled} asChild={isCompiled}>
-          {isCompiled ? <Link href={`/chapter/${chapter.id}/notes`}>View Notes</Link> : <span>View Notes</span>}
+        <Button variant="outline" className="flex-1 bg-transparent" disabled={!canViewNotes} asChild={canViewNotes}>
+          {canViewNotes ? <Link href={`/chapter/${chapter.id}/notes`}>View Notes</Link> : <span>View Notes</span>}
         </Button>
       </div>
     </div>

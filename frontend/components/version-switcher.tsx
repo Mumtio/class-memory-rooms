@@ -5,14 +5,16 @@ import { useState } from "react"
 
 interface VersionSwitcherProps {
   currentVersion: number
-  totalVersions: number
+  versions: number[]
   onVersionChange: (version: number) => void
 }
 
-export function VersionSwitcher({ currentVersion, totalVersions, onVersionChange }: VersionSwitcherProps) {
+export function VersionSwitcher({ currentVersion, versions, onVersionChange }: VersionSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false)
 
-  const versions = Array.from({ length: totalVersions }, (_, i) => totalVersions - i)
+  // Sort versions in descending order (latest first)
+  const sortedVersions = [...versions].sort((a, b) => b - a)
+  const latestVersion = sortedVersions[0]
 
   return (
     <div className="relative">
@@ -28,7 +30,7 @@ export function VersionSwitcher({ currentVersion, totalVersions, onVersionChange
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="absolute top-full right-0 mt-2 bg-card border-2 border-border rounded-lg shadow-lg z-50 min-w-[160px]">
-            {versions.map((version) => (
+            {sortedVersions.map((version) => (
               <button
                 key={version}
                 onClick={() => {
@@ -40,7 +42,7 @@ export function VersionSwitcher({ currentVersion, totalVersions, onVersionChange
                 }`}
               >
                 Version {version}
-                {version === totalVersions && <span className="ml-2 text-xs text-muted">(Latest)</span>}
+                {version === latestVersion && <span className="ml-2 text-xs text-muted">(Latest)</span>}
               </button>
             ))}
           </div>

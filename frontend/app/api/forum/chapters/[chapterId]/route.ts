@@ -103,3 +103,84 @@ export async function GET(
     );
   }
 }
+
+
+// PATCH /api/forum/chapters/[chapterId] - Update chapter details
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ chapterId: string }> }
+) {
+  try {
+    const { chapterId } = await params;
+    const body = await request.json();
+    const { title, label, userId } = body;
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get current chapter thread
+    let thread;
+    try {
+      thread = await forumClient.getThread(chapterId);
+    } catch (error) {
+      return NextResponse.json(
+        { error: 'Chapter not found' },
+        { status: 404 }
+      );
+    }
+
+    if (!thread || thread.extendedData?.type !== 'chapter') {
+      return NextResponse.json(
+        { error: 'Chapter not found' },
+        { status: 404 }
+      );
+    }
+
+    // Build update data
+    const updateData: any = {};
+
+    if (title && title.trim()) {
+      updateData.title = title.trim();
+      updateData.extendedData = {
+        ...thread.extendedData,
+        title: title.trim(),
+      };
+    }
+
+    if (label && label.trim()) {
+      if (!updateData.extendedData) {
+        updateData.extendedData = { ...thread.extendedData };
+      }
+      updateData.extendedData.label = label.trim();
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        { error: 'No update data provided' },
+        { status: 400 }
+      );
+    }
+
+    // Update the thread
+    const updatedThread = await forumClient.updateThread(chapterId, updateData);
+
+    return NextResponse.json({
+      success: true,
+      chapter: {
+        id: updatedThread.id,
+        title: updatedThread.extendedData?.title || updatedThread.title,
+        label: updatedThread.extendedData?.label || 'Lecture',
+      },
+    });
+  } catch (error) {
+    console.error('Update chapter error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update chapter' },
+      { status: 500 }
+    );
+  }
+}

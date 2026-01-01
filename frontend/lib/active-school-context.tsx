@@ -16,6 +16,7 @@ export interface ActiveSchoolContextType {
   activeMembership: Membership | null
   setActiveSchool: (schoolId: string) => void
   getUserMemberships: (user: User | null) => Membership[]
+  refreshMemberships: () => void
 }
 
 // Create context with a default value to prevent undefined errors
@@ -24,6 +25,7 @@ const defaultContextValue: ActiveSchoolContextType = {
   activeMembership: null,
   setActiveSchool: () => {},
   getUserMemberships: () => [],
+  refreshMemberships: () => {},
 }
 
 const ActiveSchoolContext = createContext<ActiveSchoolContextType>(defaultContextValue)
@@ -39,6 +41,7 @@ export function ActiveSchoolProvider({
 }) {
   const [activeSchoolId, setActiveSchoolId] = useState<string | null>(null)
   const [isHydrated, setIsHydrated] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const getUserMemberships = React.useCallback((user: User | null): Membership[] => {
     if (!user || !user.schoolMemberships) return []
@@ -50,6 +53,10 @@ export function ActiveSchoolProvider({
       role: data.role,
       joinedAt: data.joinedAt,
     }))
+  }, [])
+
+  const refreshMemberships = React.useCallback(() => {
+    setRefreshKey(prev => prev + 1)
   }, [])
 
   // Initialize active school from localStorage or user's current school
@@ -74,7 +81,7 @@ export function ActiveSchoolProvider({
         setActiveSchoolId(memberships[0].schoolId)
       }
     }
-  }, [user, getUserMemberships])
+  }, [user, getUserMemberships, refreshKey])
 
   const activeMembership: Membership | null = React.useMemo(() => {
     if (!user || !activeSchoolId) {
@@ -108,7 +115,8 @@ export function ActiveSchoolProvider({
     activeMembership,
     setActiveSchool,
     getUserMemberships,
-  }), [activeSchoolId, activeMembership, setActiveSchool, getUserMemberships])
+    refreshMemberships,
+  }), [activeSchoolId, activeMembership, setActiveSchool, getUserMemberships, refreshMemberships])
 
   return (
     <ActiveSchoolContext.Provider value={contextValue}>

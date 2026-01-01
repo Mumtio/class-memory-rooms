@@ -5,7 +5,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { forumClient, generateSlug } from '@/lib/forum/client';
-import { mapThreadsToChapters } from '@/lib/forum/mappers';
 
 // GET /api/forum/courses/[courseId]/chapters - Get all chapters in a course
 export async function GET(
@@ -14,15 +13,12 @@ export async function GET(
 ) {
   try {
     const { courseId } = await params;
-    console.log('Fetching chapters for course:', courseId);
 
     // Get course post to verify it exists
     let coursePost;
     try {
       coursePost = await forumClient.getPost(courseId);
-      console.log('Course post found:', coursePost?.id, coursePost?.extendedData?.type);
     } catch (error) {
-      console.error('Error fetching course post:', error);
       return NextResponse.json(
         { error: 'Course not found' },
         { status: 404 }
@@ -40,25 +36,65 @@ export async function GET(
     let allThreads: any[] = [];
     try {
       allThreads = await forumClient.getThreadsByType('chapter');
-      console.log('Found chapter threads:', allThreads.length);
     } catch (error) {
-      console.error('Error fetching chapter threads:', error);
-      // Return empty array if we can't fetch threads
       return NextResponse.json({ chapters: [] });
     }
 
     const chapterThreads = allThreads.filter(thread => 
       thread.extendedData?.courseId === courseId
     );
-    console.log('Filtered chapters for this course:', chapterThreads.length);
 
-    // Map to frontend format
-    const chapters = mapThreadsToChapters(chapterThreads);
+    // Calculate stats for each chapter by fetching posts
+    const chaptersWithStats = await Promise.all(
+      chapterThreads.map(async (thread) => {
+        const extendedData = thread.extendedData || {};
+        
+        // Fetch posts to calculate real stats
+        let contributions = 0;
+        let resources = 0;
+        let photos = 0;
+        let hasNotes = false;
+        
+        try {
+          const posts = await forumClient.getPostsByThread(thread.id);
+          
+          posts.forEach(post => {
+            if (post.extendedData?.type === 'contribution') {
+              contributions++;
+              const contributionType = post.extendedData?.contributionType;
+              if (contributionType === 'resource') resources++;
+              if (contributionType === 'notes_photo') photos++;
+              
+              // Check for images in body
+              try {
+                const body = JSON.parse(post.body || '{}');
+                if (body.image) photos++;
+              } catch {}
+            }
+            if (post.extendedData?.type === 'unified_notes') {
+              hasNotes = true;
+            }
+          });
+        } catch {}
+        
+        return {
+          id: thread.id,
+          courseId: extendedData.courseId || '',
+          label: extendedData.label || 'Lecture',
+          title: thread.title,
+          date: extendedData.date,
+          status: hasNotes ? 'Compiled' : (contributions >= 2 ? 'AI Ready' : 'Collecting'),
+          contributions,
+          resources,
+          photos,
+          hasNotes,
+        };
+      })
+    );
 
-    return NextResponse.json({ chapters });
+    return NextResponse.json({ chapters: chaptersWithStats });
   } catch (error: any) {
     console.error('Get chapters error:', error);
-    console.error('Error details:', error?.message, error?.status);
     return NextResponse.json(
       { error: 'Failed to fetch chapters' },
       { status: 500 }
@@ -121,6 +157,7 @@ export async function POST(
     const slug = generateSlug(`${title.trim()}-${timestamp}`);
 
     // Create chapter thread in Foru.ms with proper structure matching API spec
+    // Note: Don't include tags as Foru.ms requires tag IDs, not strings
     const threadData = {
       title: title.trim(),
       slug: slug,
@@ -128,7 +165,6 @@ export async function POST(
       userId: userId,
       locked: false,
       pinned: false,
-      tags: ['chapter'],
       extendedData: {
         type: 'chapter',
         courseId: courseId,
@@ -141,9 +177,23 @@ export async function POST(
     
     console.log('Creating thread with data:', JSON.stringify(threadData, null, 2));
 
-    const thread = await forumClient.createThread(threadData);
-
-    console.log('Chapter thread created:', thread.id);
+    let thread;
+    try {
+      thread = await forumClient.createThread(threadData);
+      console.log('Chapter thread created:', thread.id);
+    } catch (threadError: any) {
+      console.error('Thread creation failed:', threadError);
+      console.error('Thread error details:', {
+        message: threadError?.message,
+        status: threadError?.status,
+        statusText: threadError?.statusText,
+        errorData: threadError?.errorData,
+      });
+      return NextResponse.json(
+        { error: threadError?.errorData?.message || threadError?.message || 'Failed to create chapter thread' },
+        { status: threadError?.status || 500 }
+      );
+    }
 
     return NextResponse.json({
       chapterId: thread.id,
@@ -151,7 +201,7 @@ export async function POST(
     });
   } catch (error: any) {
     console.error('Create chapter error:', error);
-    console.error('Error details:', error?.message, error?.status, error?.errorData);
+    console.error('Error stack:', error?.stack);
     return NextResponse.json(
       { error: error?.message || 'Failed to create chapter' },
       { status: 500 }

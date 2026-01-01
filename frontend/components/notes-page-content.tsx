@@ -15,6 +15,8 @@ import type { Chapter, UnifiedNotes } from "@/types/models"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { useDemoStore } from "@/lib/demo-store"
+import { useAuth } from "@/lib/auth-store"
+import { Sparkles } from "lucide-react"
 
 interface NotesPageContentProps {
   chapterId: string
@@ -33,21 +35,25 @@ export function NotesPageContent({
 }: NotesPageContentProps) {
   const router = useRouter()
   const { addActivity } = useDemoStore()
+  const { user } = useAuth()
 
   const latestVersion = allVersions.length > 0 ? Math.max(...allVersions.map((n) => n.version)) : 1
 
   const [currentVersion, setCurrentVersion] = useState(latestVersion)
   const [regenerateModalOpen, setRegenerateModalOpen] = useState(false)
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: "", visible: false })
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [currentNotes, setCurrentNotes] = useState<UnifiedNotes | undefined>(initialNotes)
+  const [versions, setVersions] = useState<UnifiedNotes[]>(allVersions)
 
   useEffect(() => {
     addActivity({ type: "notes", chapterId })
   }, [chapterId])
 
-  const notes = allVersions.find((n) => n.version === currentVersion) || initialNotes
+  const notes = versions.find((n) => n.version === currentVersion) || currentNotes
 
   // If no notes exist, show placeholder
-  if (!notes) {
+  if (!notes && !isRegenerating) {
     return (
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-2xl mx-auto paper-card p-12 text-center">
@@ -66,21 +72,46 @@ export function NotesPageContent({
     )
   }
 
+  // Show regenerating state
+  if (isRegenerating) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="relative mx-auto w-24 h-24 mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-primary/20"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+            <Sparkles className="absolute inset-0 m-auto h-10 w-10 text-primary animate-pulse" />
+          </div>
+          <h2 className="font-serif text-2xl font-bold text-ink mb-3">Regenerating Notes</h2>
+          <p className="text-muted mb-2">
+            AI is creating a new version of the study notes...
+          </p>
+          <p className="text-sm text-muted/70">This may take a few moments</p>
+        </div>
+      </div>
+    )
+  }
+
   const showToast = (message: string) => {
     setToast({ message, visible: true })
     setTimeout(() => setToast({ message: "", visible: false }), 3000)
   }
 
   const handleRegenerate = async () => {
+    if (!user) {
+      showToast("Please log in to regenerate notes")
+      return
+    }
+    
     setRegenerateModalOpen(false)
-    showToast("Generating notes...")
+    setIsRegenerating(true)
     
     try {
       const response = await fetch(`/api/forum/chapters/${chapterId}/generate-notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: 'current-user', // This would come from auth
+          userId: user.id,
           userRole: 'student',
         }),
       })
@@ -88,14 +119,21 @@ export function NotesPageContent({
       if (response.ok) {
         const data = await response.json()
         showToast("Notes generated successfully!")
-        // Reload the page to show new notes
-        window.location.reload()
+        
+        // Update local state with new notes
+        const newNotes = data.notes
+        newNotes.version = data.version
+        setCurrentNotes(newNotes)
+        setVersions(prev => [newNotes, ...prev])
+        setCurrentVersion(data.version)
       } else {
         const error = await response.json()
         showToast(error.error || "Failed to generate notes")
       }
     } catch (err) {
       showToast("Failed to generate notes")
+    } finally {
+      setIsRegenerating(false)
     }
   }
 
@@ -117,11 +155,11 @@ export function NotesPageContent({
 
       <div className="container mx-auto px-4 py-8">
         {/* Version switcher */}
-        {allVersions.length > 1 && (
+        {versions.length > 1 && (
           <div className="flex justify-end mb-6">
             <VersionSwitcher
               currentVersion={currentVersion}
-              totalVersions={allVersions.length}
+              versions={versions.map(v => v.version)}
               onVersionChange={setCurrentVersion}
             />
           </div>

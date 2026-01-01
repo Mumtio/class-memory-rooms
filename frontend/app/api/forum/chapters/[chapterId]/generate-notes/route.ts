@@ -15,7 +15,18 @@ export async function POST(
 ) {
   try {
     const { chapterId } = await params;
-    const body = await request.json();
+    
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid request body' },
+        { status: 400 }
+      );
+    }
+    
     const { userId, userRole } = body;
 
     if (!userId) {
@@ -25,8 +36,20 @@ export async function POST(
       );
     }
 
+    console.log(`[generate-notes] Starting for chapter ${chapterId}, user ${userId}`);
+
     // 1. Verify chapter exists
-    const chapter = await forumClient.getThread(chapterId);
+    let chapter;
+    try {
+      chapter = await forumClient.getThread(chapterId);
+    } catch (chapterError) {
+      console.error(`[generate-notes] Failed to fetch chapter ${chapterId}:`, chapterError);
+      return NextResponse.json(
+        { error: 'Failed to fetch chapter' },
+        { status: 500 }
+      );
+    }
+    
     if (!chapter || chapter.extendedData?.type !== 'chapter') {
       return NextResponse.json(
         { error: 'Chapter not found' },
@@ -35,8 +58,19 @@ export async function POST(
     }
 
     // 2. Get all contributions
-    const posts = await forumClient.getPostsByThread(chapterId);
+    let posts;
+    try {
+      posts = await forumClient.getPostsByThread(chapterId);
+    } catch (postsError) {
+      console.error(`[generate-notes] Failed to fetch posts for chapter ${chapterId}:`, postsError);
+      return NextResponse.json(
+        { error: 'Failed to fetch contributions' },
+        { status: 500 }
+      );
+    }
+    
     const contributionPosts = posts.filter(p => p.extendedData?.type === 'contribution');
+    console.log(`[generate-notes] Found ${contributionPosts.length} contributions`);
 
     // 3. Check minimum contributions
     const minContributions = 2;
@@ -63,11 +97,11 @@ export async function POST(
     // Batch fetch remaining users in parallel (for legacy posts without authorName)
     if (userIdsToFetch.length > 0) {
       const userResults = await Promise.all(
-        userIdsToFetch.map(async (userId) => {
+        userIdsToFetch.map(async (uid) => {
           try {
-            return await forumClient.getUser(userId);
+            return await forumClient.getUser(uid);
           } catch {
-            return { id: userId, name: 'Unknown User' };
+            return { id: uid, name: 'Unknown User' };
           }
         })
       );
@@ -79,32 +113,46 @@ export async function POST(
 
     // 5. Map contributions
     const contributions = mapPostsToContributions(contributionPosts, authors);
+    console.log(`[generate-notes] Mapped ${contributions.length} contributions`);
 
     // 6. Check if OpenAI API key is configured
     const openaiApiKey = process.env.OPENAI_API_KEY;
+    
+    // Get next version number
+    const existingNotes = posts.filter(p => p.extendedData?.type === 'unified_notes');
+    const nextVersion = existingNotes.length + 1;
+    console.log(`[generate-notes] Creating version ${nextVersion}`);
+
     if (!openaiApiKey) {
       // Return mock notes for demo purposes
+      console.log('[generate-notes] No OpenAI API key, generating mock notes');
       const mockNotes = generateMockNotes(chapter, contributions);
-      
-      // Get next version number
-      const existingNotes = posts.filter(p => p.extendedData?.type === 'unified_notes');
-      const nextVersion = existingNotes.length + 1;
 
       // Save mock notes to Foru.ms
-      const notesPost = await forumClient.createPost({
-        threadId: chapterId,
-        body: JSON.stringify(mockNotes),
-        userId: userId,
-        extendedData: {
-          type: 'unified_notes',
-          version: nextVersion,
-          generatedBy: userId,
-          generatorRole: userRole || 'student',
-          generatedAt: new Date().toISOString(),
-          contributionCount: contributions.length,
-        }
-      });
+      let notesPost;
+      try {
+        notesPost = await forumClient.createPost({
+          threadId: chapterId,
+          body: JSON.stringify(mockNotes),
+          userId: userId,
+          extendedData: {
+            type: 'unified_notes',
+            version: nextVersion,
+            generatedBy: userId,
+            generatorRole: userRole || 'student',
+            generatedAt: new Date().toISOString(),
+            contributionCount: contributions.length,
+          }
+        });
+      } catch (createError) {
+        console.error('[generate-notes] Failed to create notes post:', createError);
+        return NextResponse.json(
+          { error: 'Failed to save generated notes' },
+          { status: 500 }
+        );
+      }
 
+      console.log(`[generate-notes] Successfully created notes post ${notesPost.id}`);
       return NextResponse.json({
         postId: notesPost.id,
         version: nextVersion,
@@ -115,31 +163,48 @@ export async function POST(
     }
 
     // 7. Generate with OpenAI
+    console.log('[generate-notes] Generating with OpenAI');
     const prompt = buildAIPrompt(chapter, contributions);
-    const aiResponse = await generateNotesWithAI(prompt, openaiApiKey);
+    
+    let aiResponse;
+    try {
+      aiResponse = await generateNotesWithAI(prompt, openaiApiKey);
+    } catch (aiError) {
+      console.error('[generate-notes] OpenAI generation failed:', aiError);
+      return NextResponse.json(
+        { error: 'AI generation failed. Please try again.' },
+        { status: 500 }
+      );
+    }
 
-    // 8. Get next version number
-    const existingNotes = posts.filter(p => p.extendedData?.type === 'unified_notes');
-    const nextVersion = existingNotes.length + 1;
-
-    // 9. Parse AI response into structured format
+    // 8. Parse AI response into structured format
     const structuredNotes = parseAIResponse(aiResponse.content, chapter);
 
-    // 10. Save notes to Foru.ms
-    const notesPost = await forumClient.createPost({
-      threadId: chapterId,
-      body: JSON.stringify(structuredNotes),
-      userId: userId,
-      extendedData: {
-        type: 'unified_notes',
-        version: nextVersion,
-        generatedBy: userId,
-        generatorRole: userRole || 'student',
-        generatedAt: new Date().toISOString(),
-        contributionCount: contributions.length,
-      }
-    });
+    // 9. Save notes to Foru.ms
+    let notesPost;
+    try {
+      notesPost = await forumClient.createPost({
+        threadId: chapterId,
+        body: JSON.stringify(structuredNotes),
+        userId: userId,
+        extendedData: {
+          type: 'unified_notes',
+          version: nextVersion,
+          generatedBy: userId,
+          generatorRole: userRole || 'student',
+          generatedAt: new Date().toISOString(),
+          contributionCount: contributions.length,
+        }
+      });
+    } catch (createError) {
+      console.error('[generate-notes] Failed to create notes post:', createError);
+      return NextResponse.json(
+        { error: 'Failed to save generated notes' },
+        { status: 500 }
+      );
+    }
 
+    console.log(`[generate-notes] Successfully created AI notes post ${notesPost.id}`);
     return NextResponse.json({
       postId: notesPost.id,
       version: nextVersion,
@@ -148,9 +213,10 @@ export async function POST(
       message: 'AI notes generated successfully',
     });
   } catch (error) {
-    console.error('Generate notes error:', error);
+    console.error('[generate-notes] Unexpected error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to generate notes' },
+      { error: `Failed to generate notes: ${errorMessage}` },
       { status: 500 }
     );
   }

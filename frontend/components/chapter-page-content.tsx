@@ -125,7 +125,7 @@ export function ChapterPageContent({
           title: data.title,
           content: data.content || '',
           imageUrl: data.image?.url,
-          links: data.link ? [data.link.url] : [],
+          link: data.link,
           anonymous: data.anonymous,
           userId: user?.id,
           authorName: user?.name,
