@@ -12,6 +12,55 @@ A collaborative learning platform where students contribute notes, photos, and r
 4. **AI generates unified notes** from all contributions when enough content is collected
 5. **Everyone benefits** from the collective knowledge
 
+## How We Built It
+
+### Frontend
+- Next.js 15 with App Router and React 19
+- Multi-school architecture with workspace-scoped state
+- Role-based permissions (Admin/Teacher/Student) scoped per school
+- shadcn/ui components with a paper-like educational aesthetic
+
+### Innovative Use of Foru.ms
+
+We used Foru.ms as a headless backend in a non-traditional way:
+
+| Foru.ms Primitive | Our Usage |
+|-------------------|-----------|
+| Threads | Schools and Chapters/Lectures |
+| Posts | Subjects, Courses, Contributions, AI Notes |
+| extendedData | Type flags, metadata, relationships |
+
+**Key innovation**: AI-generated notes are stored back into Foru.ms as versioned posts, making them first-class citizens of the system rather than external artifacts.
+
+### Image Storage
+- Vercel Blob Storage for note photos
+- URLs stored in Foru.ms post extendedData
+- Direct CDN delivery
+
+## Challenges We Ran Into
+
+- **Multi-tenant role scoping**: Users can have different roles in different schools. Had to rebuild the permission system to scope roles per school, not globally.
+- **Server-side data fetching on Vercel**: Internal API calls from server components failed. Solved by calling Foru.ms API directly in server components.
+- **Foru.ms API quirks**: Tags require IDs not strings, had to remove tag usage from thread creation.
+- **Hydration mismatches**: Auth state differs between server and client render. Fixed with mounted state checks.
+- **Environment variables**: NEXT_PUBLIC_APP_URL doesn't work for server-side fetches on Vercel.
+
+## Accomplishments We're Proud Of
+
+- Turned a forum backend into a collaborative academic knowledge system
+- Built a working multi-school SaaS with proper workspace isolation
+- Students can generate AI notes, not just teachers — democratizing knowledge synthesis
+- Admin dashboard for managing schools, subjects, courses, and lectures
+- Version control for AI-generated notes
+- Anonymous contribution option for shy students
+
+## What We Learned
+
+- Foru.ms is flexible enough to power non-forum applications
+- Role scoping per workspace is essential for multi-tenant systems
+- Server components need different data fetching strategies than client components
+- Good architecture decisions early prevent painful refactors later
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -25,29 +74,14 @@ A collaborative learning platform where students contribute notes, photos, and r
 
 ## Data Architecture
 
-All application data is stored in Foru.ms using threads and posts with `extendedData` for metadata:
-
-| App Entity | Foru.ms Type | Storage Details |
-|------------|--------------|-----------------|
-| School | Thread | `extendedData.type: 'school'`, stores name, joinKey |
-| Subject | Post | `extendedData.type: 'subject'`, stores name, colorTag |
-| Course | Post | `extendedData.type: 'course'`, stores code, title, teacher, subjectId |
-| Chapter | Thread | `extendedData.type: 'chapter'`, stores courseId, label, status |
-| Contribution | Post | `extendedData.type: 'contribution'`, stores contributionType, content |
-| Reply | Post | `extendedData.type: 'reply'`, uses parentId for threading |
-| AI Notes | Post | `extendedData.type: 'unified_notes'`, stores version, generated content |
-
-### Image Handling
-
-- **Storage**: Vercel Blob Storage
-- **Flow**: User uploads image → stored in Vercel Blob → URL saved in contribution post's `extendedData.image.url`
-- **Access**: Public URLs, served directly from Vercel's CDN
-
-### User Authentication
-
-- **Registration/Login**: Proxied through Foru.ms `/auth/register` and `/auth/login`
-- **Session**: JWT token stored in localStorage
-- **School Memberships**: Stored client-side in localStorage (role, schoolName, joinedAt per school)
+| App Entity | Foru.ms Type | Key Fields in extendedData |
+|------------|--------------|---------------------------|
+| School | Thread | type: 'school', name, joinKey |
+| Subject | Post | type: 'subject', name, colorTag |
+| Course | Post | type: 'course', code, title, teacher, subjectId |
+| Chapter | Thread | type: 'chapter', courseId, label, status |
+| Contribution | Post | type: 'contribution', contributionType, anonymous |
+| AI Notes | Post | type: 'unified_notes', version, generatedAt |
 
 ## Local Development
 
@@ -70,15 +104,6 @@ BLOB_READ_WRITE_TOKEN=your_token
 # Google Gemini (AI notes)
 GEMINI_API_KEY=your_key
 ```
-
-## Features
-
-- Multi-school workspaces with join keys
-- Role-based access (Admin, Teacher, Student)
-- 5 contribution types: takeaways, note photos, resources, solved examples, confusions
-- Anonymous contribution option
-- AI-generated unified notes with version history
-- Helpful votes on contributions
 
 ## Live Demo
 
