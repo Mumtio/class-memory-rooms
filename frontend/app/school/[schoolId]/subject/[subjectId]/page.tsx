@@ -15,23 +15,61 @@ interface SubjectPageProps {
 
 async function getSubjectData(schoolId: string, subjectId: string): Promise<{ subject: Subject; courses: Course[]; schoolName: string } | null> {
   try {
-    // Use VERCEL_URL for server-side fetches in production
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const apiUrl = process.env.FORUMMS_API_URL || 'https://foru.ms/api/v1'
+    const apiKey = process.env.FORUMMS_API_KEY || ''
     
-    // Fetch subject details and courses
-    const res = await fetch(`${baseUrl}/api/forum/schools/${schoolId}/subjects/${subjectId}`, {
-      cache: 'no-store'
-    })
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+    }
+
+    // Get school thread
+    const schoolRes = await fetch(`${apiUrl}/thread/${schoolId}`, { headers, cache: 'no-store' })
+    if (!schoolRes.ok) return null
+    const schoolThread = await schoolRes.json()
     
-    if (!res.ok) return null
-    const data = await res.json()
+    if (schoolThread.extendedData?.type !== 'school') return null
+
+    // Get subject post
+    const subjectRes = await fetch(`${apiUrl}/post/${subjectId}`, { headers, cache: 'no-store' })
+    if (!subjectRes.ok) return null
+    const subjectPost = await subjectRes.json()
     
+    if (subjectPost.extendedData?.type !== 'subject') return null
+
+    // Get all posts in school thread to find courses
+    const postsRes = await fetch(`${apiUrl}/posts?threadId=${schoolId}`, { headers, cache: 'no-store' })
+    const postsData = postsRes.ok ? await postsRes.json() : { posts: [] }
+    const posts = postsData.posts || []
+
+    // Filter for courses belonging to this subject
+    const coursePosts = posts.filter((post: any) =>
+      post.extendedData?.type === 'course' && 
+      post.extendedData?.subjectId === subjectId
+    )
+
+    const courses: Course[] = coursePosts.map((post: any) => ({
+      id: post.id,
+      subjectId: post.extendedData?.subjectId || '',
+      code: post.extendedData?.code || '',
+      title: post.extendedData?.title || '',
+      teacher: post.extendedData?.teacher || 'TBD',
+      term: post.extendedData?.term || '',
+      section: post.extendedData?.section || '',
+    }))
+
     return {
-      subject: data.subject,
-      courses: data.courses || [],
-      schoolName: data.schoolName || 'School'
+      subject: {
+        id: subjectPost.id,
+        name: subjectPost.extendedData?.name || 'Subject',
+        colorTag: subjectPost.extendedData?.colorTag || subjectPost.extendedData?.color || '#7EC8E3',
+        courseCount: courses.length,
+        chapterCount: 0,
+        compiledCount: 0,
+        collectingCount: 0,
+      },
+      courses,
+      schoolName: schoolThread.extendedData?.name || schoolThread.title || 'School',
     }
   } catch (error) {
     console.error('Error fetching subject data:', error)
@@ -54,8 +92,8 @@ export default async function SubjectPage({ params }: SubjectPageProps) {
       <div className="container mx-auto px-4 py-8">
         <Breadcrumbs
           items={[
-            { label: "School", href: "/school/demo" },
-            { label: schoolName, href: "/school/demo" },
+            { label: "School", href: `/school/${schoolId}` },
+            { label: schoolName, href: `/school/${schoolId}` },
             { label: subject.name },
           ]}
         />

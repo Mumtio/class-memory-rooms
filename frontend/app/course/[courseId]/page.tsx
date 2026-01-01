@@ -12,33 +12,99 @@ interface CoursePageProps {
   }>
 }
 
-async function getCourseData(courseId: string): Promise<{ course: Course; subject: Subject; chapters: Chapter[]; schoolName: string } | null> {
+async function getCourseData(courseId: string): Promise<{ course: Course; subject: Subject; chapters: Chapter[]; schoolId: string; schoolName: string } | null> {
   try {
-    // Use VERCEL_URL for server-side fetches in production
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const apiUrl = process.env.FORUMMS_API_URL || 'https://foru.ms/api/v1'
+    const apiKey = process.env.FORUMMS_API_KEY || ''
     
-    // Fetch course details
-    const courseRes = await fetch(`${baseUrl}/api/forum/courses/${courseId}`, {
-      cache: 'no-store'
-    })
-    
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+    }
+
+    // Get course post
+    const courseRes = await fetch(`${apiUrl}/post/${courseId}`, { headers, cache: 'no-store' })
     if (!courseRes.ok) return null
-    const courseData = await courseRes.json()
+    const coursePost = await courseRes.json()
     
-    // Fetch chapters for this course
-    const chaptersRes = await fetch(`${baseUrl}/api/forum/courses/${courseId}/chapters`, {
-      cache: 'no-store'
-    })
+    if (coursePost.extendedData?.type !== 'course') return null
+
+    const schoolId = coursePost.extendedData?.schoolId || ''
+    const subjectId = coursePost.extendedData?.subjectId || ''
+
+    // Get subject post
+    let subject: Subject = {
+      id: subjectId,
+      name: 'Subject',
+      colorTag: '#7EC8E3',
+      courseCount: 0,
+      chapterCount: 0,
+      compiledCount: 0,
+      collectingCount: 0,
+    }
     
-    const chaptersData = chaptersRes.ok ? await chaptersRes.json() : { chapters: [] }
-    
+    if (subjectId) {
+      const subjectRes = await fetch(`${apiUrl}/post/${subjectId}`, { headers, cache: 'no-store' })
+      if (subjectRes.ok) {
+        const subjectPost = await subjectRes.json()
+        subject = {
+          id: subjectPost.id,
+          name: subjectPost.extendedData?.name || 'Subject',
+          colorTag: subjectPost.extendedData?.colorTag || subjectPost.extendedData?.color || '#7EC8E3',
+          courseCount: 0,
+          chapterCount: 0,
+          compiledCount: 0,
+          collectingCount: 0,
+        }
+      }
+    }
+
+    // Get school name
+    let schoolName = 'School'
+    if (schoolId) {
+      const schoolRes = await fetch(`${apiUrl}/thread/${schoolId}`, { headers, cache: 'no-store' })
+      if (schoolRes.ok) {
+        const schoolThread = await schoolRes.json()
+        schoolName = schoolThread.extendedData?.name || schoolThread.title || 'School'
+      }
+    }
+
+    // Get all threads to find chapters for this course
+    const threadsRes = await fetch(`${apiUrl}/threads`, { headers, cache: 'no-store' })
+    const threadsData = threadsRes.ok ? await threadsRes.json() : { threads: [] }
+    const threads = threadsData.threads || []
+
+    const chapterThreads = threads.filter((thread: any) =>
+      thread.extendedData?.type === 'chapter' && 
+      thread.extendedData?.courseId === courseId
+    )
+
+    const chapters: Chapter[] = chapterThreads.map((thread: any) => ({
+      id: thread.id,
+      courseId: thread.extendedData?.courseId || '',
+      label: thread.extendedData?.label || 'Lecture',
+      title: thread.title,
+      date: thread.extendedData?.date,
+      status: thread.extendedData?.status || 'Collecting',
+      contributions: 0,
+      resources: 0,
+      photos: 0,
+    }))
+
     return {
-      course: courseData.course,
-      subject: courseData.subject,
-      chapters: chaptersData.chapters || [],
-      schoolName: courseData.schoolName || 'School'
+      course: {
+        id: coursePost.id,
+        subjectId: coursePost.extendedData?.subjectId || '',
+        code: coursePost.extendedData?.code || '',
+        title: coursePost.extendedData?.title || '',
+        teacher: coursePost.extendedData?.teacher || 'TBD',
+        term: coursePost.extendedData?.term || '',
+        section: coursePost.extendedData?.section || '',
+      },
+      subject,
+      chapters,
+      schoolId,
+      schoolName,
     }
   } catch (error) {
     console.error('Error fetching course data:', error)
@@ -54,9 +120,9 @@ export default async function CoursePage({ params }: CoursePageProps) {
     notFound()
   }
   
-  const { course, subject, chapters, schoolName } = data
+  const { course, subject, chapters, schoolId, schoolName } = data
 
-  // Find the latest chapter (last in list with status not "Compiled")
+  // Find the latest chapter
   const latestChapter = chapters.find((ch) => ch.status !== "Compiled") || chapters[chapters.length - 1]
 
   return (
@@ -64,9 +130,9 @@ export default async function CoursePage({ params }: CoursePageProps) {
       <div className="container mx-auto px-4 py-8">
         <Breadcrumbs
           items={[
-            { label: "School", href: "/school/demo" },
-            { label: schoolName, href: "/school/demo" },
-            { label: subject.name, href: `/school/demo/subject/${subject.id}` },
+            { label: "School", href: `/school/${schoolId}` },
+            { label: schoolName, href: `/school/${schoolId}` },
+            { label: subject.name, href: `/school/${schoolId}/subject/${subject.id}` },
             { label: `${course.code}` },
           ]}
         />
@@ -74,7 +140,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
         {/* Header */}
         <div className="mb-12">
           <Button variant="outline" className="mb-6 bg-transparent" asChild>
-            <Link href={`/school/demo/subject/${subject.id}`}>
+            <Link href={`/school/${schoolId}/subject/${subject.id}`}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to {subject.name}
             </Link>
@@ -95,7 +161,6 @@ export default async function CoursePage({ params }: CoursePageProps) {
                 </div>
               </div>
 
-              {/* Only show teacher name */}
               {course.teacher && course.teacher !== 'TBD' && (
                 <div className="flex items-center gap-3 flex-wrap mt-4">
                   <div className="px-3 py-1 bg-background rounded-full text-sm font-semibold text-muted border border-border">
@@ -132,7 +197,7 @@ export default async function CoursePage({ params }: CoursePageProps) {
                   key={chapter.id} 
                   chapter={chapter} 
                   subjectColor={subject.colorTag}
-                  hasNotes={(chapter as any).hasNotes}
+                  hasNotes={false}
                 />
               ))
             ) : (
