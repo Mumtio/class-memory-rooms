@@ -59,7 +59,7 @@ export interface Contribution {
     createdAt: string
     anonymous?: boolean 
   }>
-  helpfulCount: number
+  helpfulCount: number 
 }
 
 export interface NoteStackItem {
